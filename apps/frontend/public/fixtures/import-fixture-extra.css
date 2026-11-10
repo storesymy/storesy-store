@@ -1,0 +1,6 @@
+/* "letter-spacing" is the E2E's splice marker: this text only exists in
+   the imported sub-sheet. */
+.strapline {
+  letter-spacing: 0.04em;
+  color: #6b4a2c;
+}

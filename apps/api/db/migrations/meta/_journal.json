@@ -1,0 +1,174 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1791254374754,
+      "tag": "0000_superb_supernaut",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1791256309121,
+      "tag": "0001_luxuriant_ben_grimm",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1791772216498,
+      "tag": "0002_overrated_maginty",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1791775850763,
+      "tag": "0003_true_captain_flint",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1791777642791,
+      "tag": "0004_yielding_tarot",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1791780130156,
+      "tag": "0005_products_drop_sku",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1791830400000,
+      "tag": "0006_products_form_fields",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1791840600000,
+      "tag": "0007_products_shipping",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1791850800000,
+      "tag": "0008_products_fulfilment",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1791861000000,
+      "tag": "0009_products_download_links",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1791871200000,
+      "tag": "0010_products_discount_price",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1791881400000,
+      "tag": "0011_products_images",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1791891600000,
+      "tag": "0012_products_download_files",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1792989119308,
+      "tag": "0013_odd_rachel_grey",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "6",
+      "when": 1793080018619,
+      "tag": "0014_moaning_marvel_apes",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "6",
+      "when": 1793425386819,
+      "tag": "0015_lovely_franklin_storm",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "6",
+      "when": 1793770140692,
+      "tag": "0016_customers",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "6",
+      "when": 1793775217442,
+      "tag": "0017_customer_data",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "6",
+      "when": 1793777945924,
+      "tag": "0018_customer_contacts",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "6",
+      "when": 1793779307109,
+      "tag": "0019_customer_paid_aggregates",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "6",
+      "when": 1793780719061,
+      "tag": "0020_customer_badges",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "6",
+      "when": 1793930513649,
+      "tag": "0021_digital_fulfilment",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "6",
+      "when": 1793932421320,
+      "tag": "0022_uuid_dash",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "6",
+      "when": 1793933722951,
+      "tag": "0023_email_templates",
+      "breakpoints": true
+    }
+  ]
+}

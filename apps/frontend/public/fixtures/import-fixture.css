@@ -1,0 +1,40 @@
+/* Pulled through an import rule by the importer — must be spliced inline,
+   never hot-linked. */
+@import url("./import-fixture-extra.css");
+
+@font-face {
+  font-family: "Fixture Display";
+  src: url("./fixture.woff2") format("woff2");
+  font-weight: 700;
+}
+
+body {
+  margin: 0;
+  font-family: "Fixture Display", sans-serif;
+}
+
+/* min-height makes the document taller than any frame the editor gives it —
+   the E2E reads the synced iframe height to prove CSS + scripts both ran. */
+.hero {
+  min-height: 1020px;
+  padding: 48px 28px;
+  background: url("./hero.png") center/cover no-repeat;
+  color: #20140a;
+}
+
+.hero h1 {
+  font-size: 40px;
+  margin: 0 0 8px;
+}
+
+.hero img,
+.hero video,
+.hero iframe {
+  display: block;
+  margin: 22px auto;
+  border: 0;
+}
+
+.bad {
+  text-decoration: underline;
+}

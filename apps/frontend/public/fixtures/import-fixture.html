@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="refresh" content="0; url=https://evil.example/hijack">
+  <title>Fixture Landing</title>
+  <link rel="stylesheet" href="./import-fixture.css">
+  <link rel="preload" as="image" href="./hero.png">
+  <style>
+    .hero p { font-size: 17px; }
+  </style>
+</head>
+<body>
+  <header class="hero">
+    <h1>Fixture Landing Page</h1>
+    <p class="strapline">Brought across by the importer.</p>
+    <img src="./hero-shot.png" alt="Hero shot" width="640" height="360" srcset="./hero-shot@2x.png 2x">
+    <video poster="./video-poster.jpg" controls width="640" height="360">
+      <source src="./clip.mp4" type="video/mp4">
+    </video>
+    <iframe src="https://player.example/embed/1" width="640" height="360" title="Product tour"></iframe>
+    <a class="bad" href="javascript:alert('nope')">Bad link</a>
+    <a href="./next.html">Good link</a>
+    <p onclick="alert('nope')" style="background: url('./inline-bg.png')">Inline-styled paragraph.</p>
+    <form action="/signup"><input name="email" placeholder="Email"></form>
+  </header>
+  <script>
+    // "fixture-ran" is the E2E's script marker: this must survive into the
+    // snapshot — and does run, inside the sandbox.
+    document.title = "fixture-ran";
+    var strapline = document.querySelector(".strapline");
+    if (strapline) strapline.textContent = "Script executed inside the frame.";
+  </script>
+</body>
+</html>

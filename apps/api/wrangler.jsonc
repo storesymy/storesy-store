@@ -1,0 +1,70 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "storesy-api",
+  "main": "src/index.ts",
+  // Must stay within the oldest workerd in the toolchain (wrangler vs. vitest-pool-workers).
+  "compatibility_date": "2026-08-01",
+  "compatibility_flags": ["nodejs_compat"],
+
+  // D1 — replace database_id with the value from `wrangler d1 create storesy` before first remote migrate.
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "storesy",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "db/migrations"
+    }
+  ],
+
+  // KV — used for config / feature flags (create with `wrangler kv namespace create KV`).
+  "kv_namespaces": [
+    {
+      "binding": "KV",
+      "id": "00000000000000000000000000000000"
+    }
+  ],
+
+  // R2 — product images (cropped bytes live here; D1 stores only the paths).
+  // Create with `wrangler r2 bucket create storesy-images` before first remote use.
+  "r2_buckets": [
+    {
+      "binding": "IMAGES",
+      "bucket_name": "storesy-images"
+    }
+  ],
+
+  "durable_objects": {
+    "bindings": [
+      { "name": "SESSIONS", "class_name": "SessionDO" },
+      { "name": "RATE_LIMITS", "class_name": "RateLimitDO" },
+      { "name": "VISIT_COUNTER", "class_name": "VisitCounterDO" }
+    ]
+  },
+  // Append-only: never rename or remove a class here once shipped.
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_classes": ["SessionDO", "RateLimitDO"]
+    },
+    {
+      // Visit counter (sales pages): SQLite-backed storage, batched flushes.
+      "tag": "v2",
+      "new_sqlite_classes": ["VisitCounterDO"]
+    }
+  ],
+
+  "vars": {
+    "ENVIRONMENT": "development",
+    "WEB_ORIGIN": "http://localhost:5173",
+    "PBKDF2_ITERATIONS": "210000",
+    // /dbmin config card: serverless D1 has no classic host/user, so these are
+    // honest display labels (the Worker has no runtime access to them otherwise).
+    "DB_HOST": "cloudflare-d1",
+    "DB_USER": "d1-app",
+    "DB_NAME": "storesy"
+  },
+
+  "observability": {
+    "enabled": true
+  }
+}
