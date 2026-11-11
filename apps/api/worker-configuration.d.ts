@@ -7,7 +7,7 @@ interface __BaseEnv_Env {
 	DB: D1Database;
 	ENVIRONMENT: "development";
 	WEB_ORIGIN: "http://localhost:5173";
-	PBKDF2_ITERATIONS: "210000";
+	PBKDF2_ITERATIONS: "100000";
 	DB_HOST: "cloudflare-d1";
 	DB_USER: "d1-app";
 	DB_NAME: "storesy";

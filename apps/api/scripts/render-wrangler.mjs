@@ -79,7 +79,7 @@ config.vars = {
   ...(config.vars ?? {}),
   ENVIRONMENT: "production",
   WEB_ORIGIN: webOrigin,
-  PBKDF2_ITERATIONS: "210000",
+  PBKDF2_ITERATIONS: "100000",
 };
 
 writeFileSync(outputPath, `${JSON.stringify(config, null, 2)}\n`);

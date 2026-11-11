@@ -1,16 +1,22 @@
 /**
  * Password hashing: PBKDF2-SHA256 via the WebCrypto API (no WASM dependency).
- * Iteration count is configurable for environments with tight CPU budgets;
- * production should keep it at (or above) the default.
+ *
+ * Workers' WebCrypto rejects PBKDF2 counts above 100,000 — it throws a
+ * NotSupportedError rather than clamping. Keep the platform maximum as the
+ * default and clamp any environment override so a misconfigured deployment
+ * cannot break signup and login.
  */
-const DEFAULT_ITERATIONS = 210_000;
+const MIN_ITERATIONS = 10_000;
+const MAX_ITERATIONS = 100_000;
+const DEFAULT_ITERATIONS = MAX_ITERATIONS;
 const SALT_BYTES = 16;
 const KEY_BITS = 256;
 
 export function defaultIterations(env?: Env): number {
   const raw = env?.PBKDF2_ITERATIONS;
   const parsed = raw ? Number(raw) : Number.NaN;
-  return Number.isFinite(parsed) && parsed >= 10_000 ? parsed : DEFAULT_ITERATIONS;
+  if (!Number.isFinite(parsed)) return DEFAULT_ITERATIONS;
+  return Math.min(Math.max(Math.trunc(parsed), MIN_ITERATIONS), MAX_ITERATIONS);
 }
 
 function toBase64(bytes: Uint8Array): string {
@@ -83,7 +89,7 @@ export async function verifyPassword(password: string, stored: string): Promise<
  * A precomputed hash of an unguessable string, used to spend the same CPU when
  * the email does not exist so login timing cannot enumerate accounts.
  */
-const DUMMY_HASH = "pbkdf2-sha256$210000$AAAAAAAAAAAAAAAAAAAAAA==$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+const DUMMY_HASH = "pbkdf2-sha256$100000$AAAAAAAAAAAAAAAAAAAAAA==$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
 
 export async function burnVerifyTime(password: string): Promise<void> {
   await verifyPassword(password, DUMMY_HASH);

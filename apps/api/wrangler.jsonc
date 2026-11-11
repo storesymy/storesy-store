@@ -59,7 +59,7 @@
   "vars": {
     "ENVIRONMENT": "development",
     "WEB_ORIGIN": "http://localhost:5173",
-    "PBKDF2_ITERATIONS": "210000",
+    "PBKDF2_ITERATIONS": "100000",
     // /dbmin config card: serverless D1 has no classic host/user, so these are
     // honest display labels (the Worker has no runtime access to them otherwise).
     "DB_HOST": "cloudflare-d1",
