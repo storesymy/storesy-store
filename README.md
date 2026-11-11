@@ -218,6 +218,15 @@ WORKERS_SUBDOMAIN
 WEB_ORIGIN
 ```
 
+If your account token can use Workers but cannot read the `/workers/subdomain`
+endpoint, pass the known value directly:
+
+```bash
+WORKERS_SUBDOMAIN=nbrobot \
+CLOUDFLARE_API_TOKEN=... CLOUDFLARE_ACCOUNT_ID=... \
+  npm run bootstrap:account -- smbiz
+```
+
 ### 3. Create the GitHub Environment (GitHub UI)
 
 1. Open the repository on GitHub.

@@ -17,6 +17,7 @@
 #   KV_NAME            (default: storesy-kv)
 #   R2_BUCKET          (default: storesy-images)
 #   D1_LOCATION        (default: apac)
+#   WORKERS_SUBDOMAIN  (optional; skips the /workers/subdomain API call)
 #
 # Prerequisites: curl, jq, and a Cloudflare API token with Workers Scripts,
 # D1, KV, R2, Pages and Account Settings access.
@@ -74,11 +75,22 @@ require_success() {
 echo "Bootstrapping ${ACCOUNT_LABEL} (${CLOUDFLARE_ACCOUNT_ID})"
 
 # The workers.dev subdomain is stable per account and forms the API hostname.
-SUBDOMAIN_RESPONSE="$(api GET "/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/subdomain")"
-require_success "${SUBDOMAIN_RESPONSE}" "read workers.dev subdomain"
-WORKERS_SUBDOMAIN="$(jq -r '.result.subdomain // empty' <<<"${SUBDOMAIN_RESPONSE}")"
+# Some account-owned tokens can deploy Workers but cannot read this endpoint,
+# so an explicit WORKERS_SUBDOMAIN override is supported.
+WORKERS_SUBDOMAIN="${WORKERS_SUBDOMAIN:-}"
 if [[ -z "${WORKERS_SUBDOMAIN}" ]]; then
-  echo "This account has no workers.dev subdomain. Enable Workers & Pages first." >&2
+  SUBDOMAIN_RESPONSE="$(api GET "/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/subdomain")"
+  require_success "${SUBDOMAIN_RESPONSE}" "read workers.dev subdomain"
+  WORKERS_SUBDOMAIN="$(jq -r '.result.subdomain // empty' <<<"${SUBDOMAIN_RESPONSE}")"
+fi
+
+# Accept "nbrobot", "nbrobot.workers.dev" or a full https:// URL.
+WORKERS_SUBDOMAIN="${WORKERS_SUBDOMAIN#https://}"
+WORKERS_SUBDOMAIN="${WORKERS_SUBDOMAIN%.workers.dev}"
+
+if [[ -z "${WORKERS_SUBDOMAIN}" ]]; then
+  echo "This account has no workers.dev subdomain. Enable Workers & Pages first," >&2
+  echo "or pass WORKERS_SUBDOMAIN=<subdomain>." >&2
   exit 1
 fi
 
@@ -123,7 +135,9 @@ else
 fi
 
 # Pages ---------------------------------------------------------------------
-PAGES_LIST="$(api GET "/accounts/${CLOUDFLARE_ACCOUNT_ID}/pages/projects?per_page=100")"
+# The Pages list endpoint rejects large per_page values (8000024), so use
+# its default page size.
+PAGES_LIST="$(api GET "/accounts/${CLOUDFLARE_ACCOUNT_ID}/pages/projects")"
 require_success "${PAGES_LIST}" "list Pages projects"
 PAGES_EXISTS="$(jq -r --arg name "${PAGES_PROJECT_NAME}" '.result[]? | select(.name == $name) | .name' <<<"${PAGES_LIST}" | head -n 1)"
 if [[ -z "${PAGES_EXISTS}" ]]; then

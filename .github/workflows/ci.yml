@@ -107,6 +107,7 @@ jobs:
       R2_BUCKET_NAME: ${{ vars.R2_BUCKET_NAME }}
       PAGES_PROJECT_NAME: ${{ vars.PAGES_PROJECT_NAME }}
       WORKERS_SUBDOMAIN: ${{ vars.WORKERS_SUBDOMAIN }}
+      WEB_ORIGIN: ${{ vars.WEB_ORIGIN }}
       PAGES_BRANCH: ${{ vars.PAGES_BRANCH || 'main' }}
       INTEGRATIONS_KEY: ${{ secrets.INTEGRATIONS_KEY }}
       INTEGRATIONS_KEY_PREV: ${{ secrets.INTEGRATIONS_KEY_PREV }}
