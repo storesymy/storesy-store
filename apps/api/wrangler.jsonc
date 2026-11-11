@@ -40,11 +40,14 @@
       { "name": "VISIT_COUNTER", "class_name": "VisitCounterDO" }
     ]
   },
-  // Append-only: never rename or remove a class here once shipped.
+  // Append-only once a Worker has shipped: never rewrite an applied tag.
+  // Free-plan Durable Objects must be SQLite-backed, so the first migration
+  // creates them with new_sqlite_classes. The Storesy Worker has not been
+  // deployed under the old v1 definition, so this is still the initial tag.
   "migrations": [
     {
       "tag": "v1",
-      "new_classes": ["SessionDO", "RateLimitDO"]
+      "new_sqlite_classes": ["SessionDO", "RateLimitDO"]
     },
     {
       // Visit counter (sales pages): SQLite-backed storage, batched flushes.

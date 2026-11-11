@@ -126,7 +126,9 @@ Applied SQL migrations are immutable: never edit or delete a file in
 `apps/api/db/migrations`. Change the Drizzle schema, run `npm run db:generate`,
 and commit the new file. CI fails any PR that modifies an existing migration.
 Durable Object classes in `wrangler.jsonc` are append-only (`migrations` block:
-add only). Deploys are forward-only; app code tolerates old + new schema.
+add only). New Durable Objects on the Workers Free plan must be created with
+`new_sqlite_classes`. Deploys are forward-only; app code tolerates old + new
+schema.
 
 **Deploy — every push to `main`.**
 `.github/workflows/ci.yml` is the single pipeline: PRs and pushes run
