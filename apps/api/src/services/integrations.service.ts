@@ -64,6 +64,12 @@ export async function create(env: Env, input: CreateInput): Promise<IntegrationD
     // for the typed lookup below.
     throw validationFailed("Check the highlighted fields", { provider: "Unknown provider." });
   }
+  if (provider.auth === "google-oauth") {
+    throw badRequest(
+      "gmail_oauth_only",
+      `${provider.label} is connected with Google sign-in, not API keys.`,
+    );
+  }
 
   const settings: Record<string, string> = {};
   const secrets: Record<string, string> = {};
@@ -108,6 +114,69 @@ export async function create(env: Env, input: CreateInput): Promise<IntegrationD
     data,
   });
   return toDto(row);
+}
+
+/**
+ * Create the Gmail row the OAuth flow confirms. The refresh token arrives
+ * plaintext from Google and is encrypted under this row's AAD before it is
+ * written; the account email lands in `settings.username` for From.
+ */
+export async function createGmailOAuth(
+  env: Env,
+  name: string,
+  email: string,
+  refreshToken: string,
+): Promise<IntegrationDto> {
+  const uuid = entityUuid("itg");
+  const now = klNow();
+  const data: IntegrationData = {
+    connected: true,
+    connectedAt: now,
+    settings: { username: email, auth: "oauth" },
+    secrets: { refreshToken: await encryptSecret(env, fieldAad(uuid, "refreshToken"), refreshToken) },
+    // No hint: the token is never shown, and its last four characters are
+    // meaningless to the merchant.
+    hints: {},
+    createdAt: now,
+    updatedAt: now,
+  };
+  const row = await repo.insertIntegration(env, { uuid, name, provider: "gmail", data });
+  return toDto(row);
+}
+
+/**
+ * Reconnect: rotate the refresh token (and account address) on an existing
+ * Gmail row without touching its name or history.
+ */
+export async function updateGmailOAuth(
+  env: Env,
+  uuid: string,
+  email: string,
+  refreshToken: string,
+  name?: string,
+): Promise<IntegrationDto> {
+  const row = await repo.findIntegration(env, uuid);
+  if (!row) throw notFound("not_found", "Integration not found");
+  if (row.provider !== "gmail") throw notFound("not_found", "Not a Gmail integration");
+
+  const data: IntegrationData = {
+    ...row.data,
+    settings: { ...row.data.settings, username: email, auth: "oauth" },
+    secrets: {
+      ...row.data.secrets,
+      refreshToken: await encryptSecret(env, fieldAad(row.uuid, "refreshToken"), refreshToken),
+    },
+    hints: {},
+    connected: true,
+    connectedAt: row.data.connectedAt ?? klNow(),
+    updatedAt: klNow(),
+  };
+  const updated = await repo.updateIntegration(env, uuid, {
+    name: name?.trim() || row.name,
+    data,
+  });
+  if (!updated) throw notFound("not_found", "Integration not found");
+  return toDto(updated);
 }
 
 export async function update(
@@ -193,9 +262,10 @@ export interface TestEmailOverrides {
  * shared defaults; the Gmail section's form overrides all three.
  *
  * Transport switches on the row's provider: Cloudflare goes through its
- * Email Sending REST API, Gmail through SMTP-over-TLS (:465) with the stored
- * App Password; anything else is `wrong_provider`. Every refusal surfaces as
- * `502 email_send_failed` with actionable text — never a stored secret.
+ * Email Sending REST API, Gmail through the Gmail API with the OAuth refresh
+ * token (a dead grant says to Reconnect); anything else is `wrong_provider`.
+ * Every refusal surfaces as `502 email_send_failed` with actionable text —
+ * never a stored secret.
  */
 export async function testEmail(
   env: Env,

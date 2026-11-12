@@ -133,6 +133,39 @@ export class Context {
   }
 
   /**
+   * The short-lived pointer to a Gmail OAuth flow awaiting Save. HttpOnly and
+   * SameSite=Lax so Google's top-level callback can set it and only same-site
+   * API reads can send it back.
+   */
+  gmailPendingCookieName(): string {
+    return this.isProduction ? "__Host-storesy_gmail_pending" : "storesy_gmail_pending";
+  }
+
+  setGmailPendingCookie(uuid: string): void {
+    this.setCookieHeader(
+      serializeCookie(this.gmailPendingCookieName(), uuid, {
+        httpOnly: true,
+        secure: this.isProduction,
+        sameSite: "Lax",
+        path: "/",
+        maxAge: 10 * 60,
+      }),
+    );
+  }
+
+  clearGmailPendingCookie(): void {
+    this.setCookieHeader(
+      serializeCookie(this.gmailPendingCookieName(), "", {
+        httpOnly: true,
+        secure: this.isProduction,
+        sameSite: "Lax",
+        path: "/",
+        maxAge: 0,
+      }),
+    );
+  }
+
+  /**
    * Cookies collected during the handler; the entrypoint flushes them onto the
    * final response (multiple Set-Cookie values cannot live on Response.json()).
    */

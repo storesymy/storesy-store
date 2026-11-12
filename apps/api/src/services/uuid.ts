@@ -21,6 +21,7 @@ export const ID_PREFIX = {
   contact: "cdt",
   salesPage: "spg",
   emailTemplate: "tpl",
+  gmailOAuthFlow: "gpo",
 } as const;
 
 /** Raw UUIDv7: `xxxxxxxx-xxxx-7xxx-yxxx-xxxxxxxxxxxx` (y = 8/9/a/b). */

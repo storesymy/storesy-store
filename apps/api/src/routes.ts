@@ -67,6 +67,14 @@ export function buildRouter(): Router {
     // and every read carries masked hints only, never a secret.
     .get("/api/integrations", integrations.list)
     .post("/api/integrations", integrations.create)
+    // Gmail OAuth handshake. The callback is a browser navigation (Google →
+    // us), so it answers with an HTML redirect page instead of JSON; the
+    // pending pointer lives in an HttpOnly cookie, never in a URL.
+    .post("/api/integrations/gmail/oauth/start", integrations.gmailStart)
+    .get("/api/integrations/gmail/oauth/callback", integrations.gmailCallback)
+    .get("/api/integrations/gmail/oauth/pending", integrations.gmailPending)
+    .post("/api/integrations/gmail/oauth/complete", integrations.gmailComplete)
+    .delete("/api/integrations/gmail/oauth/pending", integrations.gmailDiscard)
     .patch("/api/integrations/:uuid", integrations.update)
     .delete("/api/integrations/:uuid", integrations.remove)
     // Test Email — admin-only; sends to the SESSION user (Cloudflare only).

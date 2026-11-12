@@ -11,6 +11,8 @@ import type {
   DbTable,
   DownloadFile,
   EmailTemplate,
+  GmailOAuthPending,
+  GmailOAuthStart,
   IntegrationRecord,
   LoginInput,
   Order,
@@ -110,6 +112,28 @@ export const api = {
       `${routes.integrations}/${encodeURIComponent(id)}/test-email`,
       { method: "POST", body: JSON.stringify(overrides ?? {}) },
     ),
+
+  /* ------------------------- Gmail (Google OAuth) ------------------------- */
+  // The browser is sent to `url`; the Worker's callback redirects back to
+  // /integrations?gmail=connected with the pending pointer in a cookie.
+
+  startGmailOAuth: (integrationUuid?: string): Promise<GmailOAuthStart> =>
+    request<GmailOAuthStart>(routes.gmailOauthStart, {
+      method: "POST",
+      body: JSON.stringify({ integrationUuid }),
+    }),
+
+  gmailOAuthPending: (): Promise<GmailOAuthPending> =>
+    request<GmailOAuthPending>(routes.gmailOauthPending),
+
+  completeGmailOAuth: (name: string): Promise<IntegrationRecord> =>
+    request<IntegrationRecord>(routes.gmailOauthComplete, {
+      method: "POST",
+      body: JSON.stringify({ name }),
+    }),
+
+  discardGmailOAuth: (): Promise<void> =>
+    request<void>(routes.gmailOauthPending, { method: "DELETE" }),
 
   /* ------------------------------ /templates ------------------------------ */
 

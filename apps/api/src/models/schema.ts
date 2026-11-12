@@ -493,3 +493,52 @@ export const emailTemplates = sqliteTable(
 
 export type EmailTemplateRow = typeof emailTemplates.$inferSelect;
 export type NewEmailTemplateRow = typeof emailTemplates.$inferInsert;
+
+/**
+ * One Gmail sign-in attempt. The state is hashed at rest; after Google answers,
+ * the row holds the account email and the ENCRYPTED refresh token until the
+ * merchant confirms with Save (or it expires and is deleted).
+ */
+export interface GmailOAuthFlowData {
+  /** `started` → state issued; `exchanging` → consumed; `ready` → confirmed by Google. */
+  status: "started" | "exchanging" | "ready";
+  /** The exact Pages origin Google must redirect back to. */
+  redirectUri: string;
+  /** Present once Google answered. */
+  email?: string;
+  /** AES-256-GCM envelope for the refresh token — never plaintext. */
+  refreshToken?: string;
+  scopes?: string[];
+  /** Set when this flow reconnects an existing Gmail row. */
+  integrationUuid?: string;
+}
+
+export const gmailOAuthFlows = sqliteTable(
+  "gmail_oauth_flows",
+  {
+    /** Internal row identifier: bigint autoincrement primary key. */
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    /** Public identifier: prefixed UUIDv7, e.g. `gpo-0199f3c2-…`. */
+    uuid: text("uuid").notNull(),
+    user_id: integer("user_id").notNull(),
+    /** SHA-256 of the OAuth `state` — the state itself is never stored. */
+    state_hash: text("state_hash").notNull(),
+    /** Non-indexed flow fields — see GmailOAuthFlowData. */
+    data: text("data", { mode: "json" }).$type<GmailOAuthFlowData>().notNull(),
+    /** `YYYY-MM-DD HH:MM:SS` Asia/Kuala_Lumpur. */
+    expires_at: text("expires_at").notNull(),
+    created_at: text("created_at")
+      .notNull()
+      .default(sql`(strftime('%Y-%m-%d %H:%M:%S', 'now', '+8 hours'))`),
+  },
+  (table) => [
+    uniqueIndex("gmail_oauth_flows_uuid_unique").on(table.uuid),
+    uniqueIndex("gmail_oauth_flows_state_hash_unique").on(table.state_hash),
+    index("gmail_oauth_flows_user_idx").on(table.user_id),
+    index("gmail_oauth_flows_expires_idx").on(table.expires_at),
+    check("gmail_oauth_flows_data_json", sql`json_valid(${table.data})`),
+  ],
+);
+
+export type GmailOAuthFlowRow = typeof gmailOAuthFlows.$inferSelect;
+export type NewGmailOAuthFlowRow = typeof gmailOAuthFlows.$inferInsert;

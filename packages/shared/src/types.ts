@@ -447,6 +447,10 @@ export const routes = {
   customers: `${API_BASE}/customers`,
   templates: `${API_BASE}/templates`,
   integrations: `${API_BASE}/integrations`,
+  gmailOauthStart: `${API_BASE}/integrations/gmail/oauth/start`,
+  gmailOauthCallback: `${API_BASE}/integrations/gmail/oauth/callback`,
+  gmailOauthPending: `${API_BASE}/integrations/gmail/oauth/pending`,
+  gmailOauthComplete: `${API_BASE}/integrations/gmail/oauth/complete`,
   /** The checkout block's signed-out submit — same-origin from `/<slug>`. */
   publicOrders: `${API_BASE}/public/orders`,
   images: `${API_BASE}/images`,

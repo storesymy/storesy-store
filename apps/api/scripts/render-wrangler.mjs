@@ -48,6 +48,9 @@ const webOrigin = required("WEB_ORIGIN");
 const apiOrigin =
   (process.env.API_ORIGIN ?? "").trim() ||
   `https://${workerName}.${workersSubdomain}.workers.dev`;
+// The shared Google OAuth client ID is public; it rides along as a plain var.
+// The client SECRET never touches this file — CI sets it with wrangler secret.
+const googleClientId = (process.env.GOOGLE_CLIENT_ID ?? "").trim();
 
 const config = parse(readFileSync(sourcePath, "utf8"));
 if (!config || typeof config !== "object") {
@@ -80,13 +83,17 @@ config.vars = {
   ENVIRONMENT: "production",
   WEB_ORIGIN: webOrigin,
   PBKDF2_ITERATIONS: "100000",
+  ...(googleClientId !== "" ? { GOOGLE_CLIENT_ID: googleClientId } : {}),
 };
 
 writeFileSync(outputPath, `${JSON.stringify(config, null, 2)}\n`);
 
 // Later workflow steps read these without duplicating the derivation.
 if (process.env.GITHUB_ENV) {
-  appendFileSync(process.env.GITHUB_ENV, `WEB_ORIGIN=${webOrigin}\nAPI_ORIGIN=${apiOrigin}\n`);
+  appendFileSync(
+    process.env.GITHUB_ENV,
+    `WEB_ORIGIN=${webOrigin}\nAPI_ORIGIN=${apiOrigin}\n`,
+  );
 }
 
 console.log(`Rendered ${outputPath}`);

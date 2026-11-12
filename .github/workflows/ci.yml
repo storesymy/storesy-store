@@ -109,6 +109,8 @@ jobs:
       WORKERS_SUBDOMAIN: ${{ vars.WORKERS_SUBDOMAIN }}
       WEB_ORIGIN: ${{ vars.WEB_ORIGIN }}
       PAGES_BRANCH: ${{ vars.PAGES_BRANCH || 'main' }}
+      GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
+      GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
       INTEGRATIONS_KEY: ${{ secrets.INTEGRATIONS_KEY }}
       INTEGRATIONS_KEY_PREV: ${{ secrets.INTEGRATIONS_KEY_PREV }}
     steps:
@@ -152,6 +154,9 @@ jobs:
           # PAGES_PROJECT_NAME and WORKERS_SUBDOMAIN.
           WEB_ORIGIN: ${{ vars.WEB_ORIGIN }}
           API_ORIGIN: ${{ vars.API_ORIGIN }}
+          # Shared Google OAuth client for Gmail connections (optional until
+          # Gmail sign-in is configured on this account).
+          GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
         run: npm run deploy:config
 
       # Migrations first: new code must never run against a schema it expects
@@ -177,6 +182,18 @@ jobs:
           elif npx wrangler secret list --config wrangler.deploy.jsonc 2>/dev/null | grep -q 'INTEGRATIONS_KEY_PREV'; then
             # Removed from GitHub after a rotation — drop it from the Worker too.
             npx wrangler secret delete INTEGRATIONS_KEY_PREV --config wrangler.deploy.jsonc
+          fi
+          # Gmail OAuth client secret. Optional until Gmail sign-in is set up:
+          # without it the connect dialog reports "not configured" instead of
+          # failing the deploy.
+          if [ -n "$GOOGLE_CLIENT_SECRET" ]; then
+            if [ -z "$GOOGLE_CLIENT_ID" ]; then
+              echo "::error::GOOGLE_CLIENT_SECRET is set but GOOGLE_CLIENT_ID is missing."
+              exit 1
+            fi
+            printf '%s' "$GOOGLE_CLIENT_SECRET" | npx wrangler secret put GOOGLE_CLIENT_SECRET --config wrangler.deploy.jsonc
+          else
+            echo "::warning::GOOGLE_CLIENT_SECRET not set — Gmail OAuth will be unavailable."
           fi
 
       # The root Pages Function forwards /api/* and page paths to the Worker.

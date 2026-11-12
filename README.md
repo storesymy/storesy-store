@@ -64,10 +64,87 @@ sales-page documents) to the Worker, so cookies are same-origin.
 | POST | `/api/integrations` | Create = connect: provider + name + fields validated against the shared catalogue; secrets AES-GCM encrypted at rest → `201` / `422` |
 | PATCH | `/api/integrations/:uuid` | Rename / rotate credentials / update config — omitted keys stay unchanged (blank secrets are refused) → `200` / `404` / `422` |
 | DELETE | `/api/integrations/:uuid` | Hard-delete an instance → `204` / `404` |
+| POST | `/api/integrations/gmail/oauth/start` | Begin Google sign-in (optional `{ integrationUuid }` to reconnect) → `{ url }`; `400 gmail_oauth_not_configured` until the OAuth client is set |
+| GET | `/api/integrations/gmail/oauth/callback` | Google's return trip — validates the single-use `state`, exchanges the code, encrypts the refresh token, then answers with an HTML redirect page (`?gmail=connected` / `?gmail=error`) |
+| GET | `/api/integrations/gmail/oauth/pending` | The confirmation dialog's data — email, scopes, suggested name; **never a token** → `200` / `404` |
+| POST | `/api/integrations/gmail/oauth/complete` | Save: writes the Gmail row from the pending flow and deletes it → `201`-style `200` / `404` |
+| DELETE | `/api/integrations/gmail/oauth/pending` | Cancel: drop the pending flow and its cookie → `204` |
 | GET | `/:slug` | Public sales page — the stored HTML document, signed out, counts visits |
 | GET | `/*` | Anything else — branded HTML `404` (retired `/p/<slug>` links, typo'd paths); JSON under `/api/` |
 
 Errors always return `{ "error": { "code", "message", "fields"? } }`.
+
+## Gmail — connect with Google sign-in
+
+Gmail is the one **OAuth** provider: `POST /api/integrations` refuses it, and
+the card opens a sign-in dialog instead of a credential form. Only
+`https://www.googleapis.com/auth/gmail.send` is requested, so Storesy can send
+mail but never reads the mailbox.
+
+### Flow
+
+```
+Gmail card "+"  →  Connect Gmail  →  Sign in with Google
+      → Google consent
+      → /api/integrations/gmail/oauth/callback   (code + single-use state)
+      → token exchange + userinfo
+      → pending row (encrypted refresh token) + HttpOnly cookie
+      → /integrations?gmail=connected
+      → confirmation dialog (account, permission, name)
+      → Save  → integration row written, pending row deleted
+```
+
+Nothing exists until **Save**. Cancel, expiry (10 minutes) or a closed tab
+simply deletes the pending row; the refresh token is encrypted with
+`INTEGRATIONS_KEY` and is never returned to the browser or logged.
+
+### Google Cloud setup (once, shared by every deployment)
+
+1. Create a Google Cloud project and enable the **Gmail API**.
+2. Configure the **OAuth consent screen** (External, unless you are on Google
+   Workspace and want an Internal app).
+3. Add the scopes `openid`, `email` and
+   `https://www.googleapis.com/auth/gmail.send`.
+4. Create an OAuth client (**Web application**) and add the redirect URIs —
+   exact match, one per environment:
+
+   ```text
+   http://localhost:5173/api/integrations/gmail/oauth/callback
+   https://smbiz.pages.dev/api/integrations/gmail/oauth/callback
+   https://kakbelle.pages.dev/api/integrations/gmail/oauth/callback
+   https://kdh.pages.dev/api/integrations/gmail/oauth/callback
+   ```
+
+5. Copy the client ID and secret into each GitHub Environment:
+
+   | Name | Kind | Value |
+   | --- | --- | --- |
+   | `GOOGLE_CLIENT_ID` | Variable | the OAuth client ID |
+   | `GOOGLE_CLIENT_SECRET` | Secret | the OAuth client secret |
+
+   CI renders the ID into the Worker config and sets the secret with
+   `wrangler secret put GOOGLE_CLIENT_SECRET`. Locally both live in
+   `apps/api/.dev.vars`.
+
+### Verification caveat
+
+`gmail.send` is a **sensitive** scope. Until the OAuth app is verified and
+published:
+
+- only accounts listed as **Test users** can connect, and
+- refresh tokens expire after **7 days**, so every connection needs a
+  weekly re-approval.
+
+Verification is required for a production store. An Internal (Google
+Workspace) app avoids external verification but only works for accounts in
+that Workspace.
+
+### Reconnect
+
+A revoked or expired grant shows as `502 email_send_failed` with
+"Gmail access expired or was revoked. Reconnect Gmail." The details dialog's
+**Reconnect** button restarts the same handshake against the existing row and
+swaps the refresh token in place — the row keeps its name and history.
 
 ## Public sales pages (`/<slug>`)
 

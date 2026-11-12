@@ -146,6 +146,12 @@ export interface IntegrationProvider {
   category: IntegrationCategory;
   /** Short copy, clamped to two lines on the card. */
   description: string;
+  /**
+   * `google-oauth` providers are connected through an OAuth flow, not the
+   * generic credential form: the API refuses `POST /api/integrations` for
+   * them and the card opens the provider's sign-in dialog instead.
+   */
+  auth?: "google-oauth";
   /** Credentials the setup dialog asks for, in order — first is `name`. */
   fields: IntegrationField[];
   /** Where to find those credentials — heading + steps, under the fields. */
@@ -302,31 +308,11 @@ export const INTEGRATION_PROVIDERS: IntegrationProvider[] = [
     domain: "gmail.com",
     faviconUrl: "https://ssl.gstatic.com/ui/v1/icons/mail/images/favicon_gmail_2026_v2.ico",
     category: "Email",
-    description: "Send email through your own Gmail account with an App Password.",
-    fields: [
-      { name: "name", label: "Name", role: "name" },
-      { name: "username", label: "Username", role: "config", placeholder: "you@gmail.com" },
-      { name: "password", label: "App Password", role: "secret", type: "password" },
-    ],
-    guide: {
-      title: "How to get App Password:",
-      steps: [
-        {
-          kind: "link",
-          text: "Go to -->",
-          url: "https://myaccount.google.com",
-        },
-        {
-          kind: "text",
-          text: 'Security \u2192 2-Step Verification \u2192 Search for "App passwords"',
-        },
-        { kind: "text", text: 'It should look like "XXXX XXXX XXXX XXXX"' },
-        {
-          kind: "text",
-          text: "Free Gmail sends about 500 emails/day — for higher volume use AWS SES or Cloudflare Email.",
-        },
-      ],
-    },
+    description: "Send order emails from your Gmail account with Google sign-in.",
+    auth: "google-oauth",
+    // No manual credential fields: the OAuth flow collects them. The account
+    // email and connection method are rendered by the details modal instead.
+    fields: [{ name: "name", label: "Name", role: "name" }],
     testEmail: {
       fields: [
         { name: "recipient", label: "Recipient Email", type: "email", placeholder: "you@gmail.com" },
@@ -340,6 +326,43 @@ export const INTEGRATION_PROVIDERS: IntegrationProvider[] = [
 export function providerOf(providerId: string): IntegrationProvider | undefined {
   return INTEGRATION_PROVIDERS.find((entry) => entry.id === providerId);
 }
+
+/** The browser redirect URL the OAuth start endpoint returns. */
+export interface GmailOAuthStart {
+  url: string;
+}
+
+/**
+ * The details the confirmation dialog shows after Google sign-in — never a
+ * token, only what the merchant must confirm before the row is written.
+ */
+export interface GmailOAuthPending {
+  email: string;
+  scopes: string[];
+  suggestedName: string;
+  /** `YYYY-MM-DD HH:MM:SS` Asia/Kuala_Lumpur. */
+  expiresAt: string;
+}
+
+/** POST /api/integrations/gmail/oauth/start */
+export const startGmailOAuthSchema = z
+  .object({
+    /** Existing Gmail row being reconnected, when set. */
+    integrationUuid: z.string().trim().max(80).optional(),
+  })
+  .default({});
+
+/** POST /api/integrations/gmail/oauth/complete */
+export const completeGmailOAuthSchema = z.object({
+  name: z
+    .string()
+    .trim()
+    .min(1, "Name is required.")
+    .max(80, "Name is too long."),
+});
+
+export type StartGmailOAuthInput = z.infer<typeof startGmailOAuthSchema>;
+export type CompleteGmailOAuthInput = z.infer<typeof completeGmailOAuthSchema>;
 
 /**
  * One stored instance as every READ returns it — settings and write-time
@@ -396,6 +419,14 @@ export const createIntegrationSchema = z
     const provider = providerOf(value.provider);
     if (!provider) {
       ctx.addIssue({ code: "custom", path: ["provider"], message: "Unknown provider." });
+      return;
+    }
+    if (provider.auth === "google-oauth") {
+      ctx.addIssue({
+        code: "custom",
+        path: ["provider"],
+        message: `${provider.label} is connected with Google sign-in, not API keys.`,
+      });
       return;
     }
     for (const [key, field] of Object.entries(value.fields)) {

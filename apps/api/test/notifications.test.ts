@@ -76,18 +76,32 @@ async function patchPage(cookie: string, id: string, body: Record<string, unknow
   expect(response.status).toBe(200);
 }
 
-async function createEmailIntegration(cookie: string): Promise<string> {
-  const created = await SELF.fetch(`${ORIGIN}/api/integrations`, {
-    method: "POST",
-    headers: jsonHeaders(cookie),
-    body: JSON.stringify({
-      provider: "gmail",
-      name: "Notify Sender",
-      fields: { username: "store@gmail.com", password: "abcd efgh ijkl mnop" },
-    }),
-  });
-  expect(created.status).toBe(201);
-  return ((await created.json()) as { uuid: string }).uuid;
+/**
+ * Gmail is connected with Google OAuth now, so the generic credential API
+ * refuses it. These tests only need a row to exist — the transport itself is
+ * always injected (`notifyOrderPaid(..., { send })`), so seed one directly.
+ */
+async function createEmailIntegration(_cookie: string): Promise<string> {
+  const uuid = `itg-${crypto.randomUUID()}`;
+  await env.DB.prepare(
+    "INSERT INTO integrations (uuid, name, provider, data) VALUES (?, ?, ?, ?)",
+  )
+    .bind(
+      uuid,
+      "Notify Sender",
+      "gmail",
+      JSON.stringify({
+        connected: true,
+        connectedAt: "2026-11-01 10:00:00",
+        settings: { username: "store@gmail.com", auth: "oauth" },
+        secrets: { refreshToken: "v1.dummy.dummy" },
+        hints: {},
+        createdAt: "2026-11-01 10:00:00",
+        updatedAt: "2026-11-01 10:00:00",
+      }),
+    )
+    .run();
+  return uuid;
 }
 
 async function placeOrder(slug: string, product: string, price: number): Promise<{ id: string; status: string }> {

@@ -127,14 +127,12 @@ describe("catalogue contract", () => {
     expect(cloudflare?.fields.some((f) => f.name === "domain")).toBe(false);
   });
 
-  it("gives Gmail the specified fields, icon and Test Email section", () => {
+  it("makes Gmail an OAuth-only provider with its icon and Test Email section", () => {
     const gmail = INTEGRATION_PROVIDERS.find((provider) => provider.id === "gmail");
-    expect(gmail?.fields.map((field) => field.label)).toEqual(["Name", "Username", "App Password"]);
-    expect(gmail?.guide?.title).toBe("How to get App Password:");
-    expect(gmail?.guide?.steps).toHaveLength(4);
-    expect(gmail?.guide?.steps?.[3]?.text).toContain("500 emails/day");
-    expect(gmail?.fields.find((f) => f.name === "username")?.role).toBe("config");
-    expect(gmail?.fields.find((f) => f.name === "password")?.role).toBe("secret");
+    expect(gmail?.auth).toBe("google-oauth");
+    // No credential fields: the Google handshake collects them.
+    expect(gmail?.fields.map((field) => field.label)).toEqual(["Name"]);
+    expect(gmail?.guide).toBeUndefined();
     expect(gmail?.faviconUrl).toBe(
       "https://ssl.gstatic.com/ui/v1/icons/mail/images/favicon_gmail_2026_v2.ico",
     );
@@ -144,6 +142,18 @@ describe("catalogue contract", () => {
       "Message",
     ]);
     expect(gmail?.testEmail?.fields?.[2]?.type).toBe("textarea");
+  });
+
+  it("refuses creating Gmail through the generic credential API", async () => {
+    const cookie = await sharedSession();
+    const response = await SELF.fetch(`${ORIGIN}/api/integrations`, {
+      method: "POST",
+      headers: jsonHeaders(cookie),
+      body: JSON.stringify({ provider: "gmail", name: "Manual Gmail", fields: {} }),
+    });
+    expect(response.status).toBe(422);
+    const body = (await response.json()) as ErrorEnvelope;
+    expect(body.error.fields?.provider).toContain("Google sign-in");
   });
 
   it("has unique provider ids", () => {
@@ -568,56 +578,46 @@ describe("end-to-end as admin", () => {
 
     await SELF.fetch(`${ORIGIN}/api/integrations/${cfUuid.uuid}`, { method: "DELETE", headers: jsonHeaders(cookie) });
 
-    // Gmail: the section's overrides are validated before a socket opens.
-    const gmail = await SELF.fetch(`${ORIGIN}/api/integrations`, {
-      method: "POST",
-      headers: jsonHeaders(cookie),
-      body: JSON.stringify({
-        provider: "gmail",
-        name: "Gmail Probe",
-        fields: { username: "probe@gmail.com", password: "abcd efgh ijkl mnop" },
-      }),
-    });
-    expect(gmail.status).toBe(201);
-    const gmailUuid = (await gmail.json()) as { uuid: string };
-    const badRecipient = await SELF.fetch(`${ORIGIN}/api/integrations/${gmailUuid.uuid}/test-email`, {
+    // Gmail: an OAuth row created by the handshake, seeded directly — the
+    // section's overrides are validated before any Google call happens.
+    const gmailUuid = "itg-0199f3c2-0000-7000-8000-0000000000aa";
+    await env.DB.prepare(
+      "INSERT INTO integrations (uuid, name, provider, data) VALUES (?1, ?2, ?3, ?4)",
+    )
+      .bind(
+        gmailUuid,
+        "Gmail Probe",
+        "gmail",
+        JSON.stringify({
+          connected: true,
+          connectedAt: "2026-11-01 10:00:00",
+          settings: { username: "probe@gmail.com", auth: "oauth" },
+          secrets: { refreshToken: "v1.dummy.dummy" },
+          hints: {},
+          createdAt: "2026-11-01 10:00:00",
+          updatedAt: "2026-11-01 10:00:00",
+        }),
+      )
+      .run();
+
+    const badRecipient = await SELF.fetch(`${ORIGIN}/api/integrations/${gmailUuid}/test-email`, {
       method: "POST",
       headers: jsonHeaders(cookie),
       body: JSON.stringify({ recipient: "not-an-email" }),
     });
     expect(badRecipient.status).toBe(422);
     expect(((await badRecipient.json()) as ErrorEnvelope).error.fields?.recipient).toBeTruthy();
-    // A NORMAL Google password (not a 16-char App Password) fails fast with
-    // the exact fix — no provider round-trip on a guaranteed 535.
-    const normalPassword = await SELF.fetch(`${ORIGIN}/api/integrations`, {
-      method: "POST",
-      headers: jsonHeaders(cookie),
-      body: JSON.stringify({
-        provider: "gmail",
-        name: "Gmail Normal Password",
-        fields: { username: "probe@gmail.com", password: "MyNormalGooglePw!99" },
-      }),
-    });
-    expect(normalPassword.status).toBe(201);
-    const normalUuid = (await normalPassword.json()) as { uuid: string };
-    const fastFail = await SELF.fetch(`${ORIGIN}/api/integrations/${normalUuid.uuid}/test-email`, {
-      method: "POST",
-      headers: jsonHeaders(cookie),
-      body: JSON.stringify({}),
-    });
-    expect(fastFail.status).toBe(400);
-    const fastBody = (await fastFail.json()) as ErrorEnvelope;
-    expect(fastBody.error.code).toBe("invalid_credentials");
-    expect(fastBody.error.message).toContain("App passwords");
-    await SELF.fetch(`${ORIGIN}/api/integrations/${normalUuid.uuid}`, { method: "DELETE", headers: jsonHeaders(cookie) });
 
-    const longSubject = await SELF.fetch(`${ORIGIN}/api/integrations/${gmailUuid.uuid}/test-email`, {
+    const longSubject = await SELF.fetch(`${ORIGIN}/api/integrations/${gmailUuid}/test-email`, {
       method: "POST",
       headers: jsonHeaders(cookie),
       body: JSON.stringify({ subject: "x".repeat(201) }),
     });
     expect(longSubject.status).toBe(422);
-    await SELF.fetch(`${ORIGIN}/api/integrations/${gmailUuid.uuid}`, { method: "DELETE", headers: jsonHeaders(cookie) });
+
+    // No SMTP fallback exists: the Gmail transport itself is covered in
+    // gmail.test.ts against injected Google responses.
+    await SELF.fetch(`${ORIGIN}/api/integrations/${gmailUuid}`, { method: "DELETE", headers: jsonHeaders(cookie) });
 
     // Rows saved BEFORE the Sender email field existed: Test Email fails fast
     // with the actionable fix (no network call to Cloudflare at all).

@@ -1,15 +1,16 @@
 import { AppError, badRequest } from "../core/errors";
 import type { IntegrationRow } from "../models/schema";
 import { decryptSecret, fieldAad } from "./integrations.crypto";
-import { sendSmtpMail, smtpFailureMessage } from "./smtp";
+import { GmailOAuthError, sendGmailEmail } from "./gmail.service";
 
 /**
  * One email, sent through one connected Email integration.
  *
  * The single transport both Test Email and the checkout's notifications use:
- * Gmail over SMTP (implicit TLS, App Password) or Cloudflare Email Sending
- * over REST. Credentials are decrypted per send and never logged; provider
- * refusals surface as `502 email_send_failed` with a fixable reason.
+ * Gmail through the Gmail API (Google OAuth, send-only scope) or Cloudflare
+ * Email Sending over REST. Credentials are decrypted per send and never
+ * logged; provider refusals surface as `502 email_send_failed` with a
+ * fixable reason — a revoked Gmail grant says to reconnect.
  */
 
 export interface EmailMessage {
@@ -29,43 +30,29 @@ export async function sendIntegrationEmail(
   message: EmailMessage,
 ): Promise<SentEmail> {
   if (row.provider === "gmail") {
-    const username = row.data.settings.username;
-    if (!username) {
-      throw badRequest("missing_credentials", "This integration has no Username stored.");
+    const from = (row.data.settings.username ?? "").trim();
+    if (from === "") {
+      throw badRequest("missing_credentials", "This Gmail integration has no account address stored.");
     }
-    const password = row.data.secrets.password;
-    if (!password) {
-      throw badRequest("missing_credentials", "This integration has no App Password stored.");
-    }
-    // Canonical App Password: 16 alphanumerics, spaces stripped (Google
-    // issues them as "abcd efgh ijkl mnop"). Anything else is a normal
-    // Google password — which SMTP AUTH always rejects, so fail fast with
-    // the exact fix instead of burning a round-trip on a guaranteed 535.
-    const appPassword = (
-      await decryptSecret(env, fieldAad(row.uuid, "password"), password)
-    ).replace(/\s+/g, "");
-    if (!/^[a-z0-9]{16}$/i.test(appPassword)) {
+    const encrypted = row.data.secrets.refreshToken;
+    if (!encrypted) {
       throw badRequest(
-        "invalid_credentials",
-        "This Password isn't a Google App Password (16 letters/digits, spaces optional). " +
-          "Create one: myaccount.google.com → Security → 2-Step Verification → App passwords.",
+        "missing_credentials",
+        "Reconnect Gmail with Google sign-in before sending.",
       );
     }
+    const refreshToken = await decryptSecret(env, fieldAad(row.uuid, "refreshToken"), encrypted);
     try {
-      await sendSmtpMail({
-        host: "smtp.gmail.com",
-        port: 465,
-        username,
-        password: appPassword,
-        from: username,
-        to: message.to,
-        subject: message.subject,
-        text: message.text,
-      });
+      return await sendGmailEmail(env, from, refreshToken, message);
     } catch (error) {
-      throw new AppError(502, "email_send_failed", smtpFailureMessage(error));
+      if (error instanceof GmailOAuthError) {
+        // Missing config is a setup problem (400); everything else the
+        // merchant can fix is a send failure with the reason attached.
+        if (error.code === "not_configured") throw badRequest(error.code, error.message);
+        throw new AppError(502, "email_send_failed", error.message);
+      }
+      throw new AppError(502, "email_send_failed", "Could not send the email.");
     }
-    return { from: username };
   }
 
   if (row.provider === "cloudflare") {

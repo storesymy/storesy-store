@@ -12,6 +12,10 @@ export default defineConfig({
           // Real keys: `wrangler secret put INTEGRATIONS_KEY` (deploy) and
           // apps/api/.dev.vars (local) — never committed.
           INTEGRATIONS_KEY: "ia3HL4rNmw65ETKO+CsoJWiv+usgDb+9tKuT+EfJsxI=",
+          // Test-only Google OAuth client: the real secret never reaches CI.
+          // Tests drive token/userinfo/Gmail through injected fetch doubles.
+          GOOGLE_CLIENT_ID: "test-client.apps.googleusercontent.com",
+          GOOGLE_CLIENT_SECRET: "test-client-secret",
         },
       },
     }),

@@ -4,10 +4,13 @@ import type {
   IntegrationRecord,
   UpdateIntegrationInput,
 } from "@storesy/shared";
+import type { GmailOAuthPending } from "@storesy/shared";
 import { Button, Icon, Shell } from "@storesy/ui";
 import { useEffect, useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { ConnectModal } from "../components/ConnectModal";
+import { GmailConfirmModal, type GmailConfirmStage } from "../components/GmailConfirmModal";
+import { GmailConnectModal } from "../components/GmailConnectModal";
 import { IntegrationDetailsModal } from "../components/IntegrationDetailsModal";
 import { ApiError, api } from "../lib/api";
 import { useAuth } from "../lib/auth";
@@ -38,6 +41,14 @@ export function IntegrationsPage() {
   const [connectingId, setConnectingId] = useState<string | null>(null);
   /** The row whose details are open. */
   const [detailUuid, setDetailUuid] = useState<string | null>(null);
+  /** The Gmail confirmation dialog after Google sign-in. */
+  const [gmailFlow, setGmailFlow] = useState<{
+    stage: GmailConfirmStage;
+    pending?: GmailOAuthPending;
+    error?: string;
+  } | null>(null);
+  /** Success line after Save. */
+  const [notice, setNotice] = useState<string | undefined>(undefined);
 
   // The list loads from the API; a dead session bounces to login like any
   // signed-out page (the effect runs for anonymous visitors too, on purpose).
@@ -68,6 +79,64 @@ export function IntegrationsPage() {
 
   function reload() {
     setReloadKey((key) => key + 1);
+  }
+
+  /**
+   * Google's callback lands here with `?gmail=connected` (pending pointer in
+   * a cookie) or `?gmail=error&reason=…`. The query is cleared immediately so
+   * a refresh can never replay the handshake.
+   */
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const gmail = params.get("gmail");
+    if (!gmail) return;
+    const reason = params.get("reason");
+    navigate("/integrations", { replace: true });
+
+    if (gmail === "error") {
+      setGmailFlow({ stage: "error", error: reason ?? "Google sign-in failed." });
+      return;
+    }
+    if (gmail !== "connected") return;
+
+    setGmailFlow({ stage: "loading" });
+    api
+      .gmailOAuthPending()
+      .then((pending) => setGmailFlow({ stage: "ready", pending }))
+      .catch((error: unknown) => {
+        if (error instanceof ApiError && error.status === 401) {
+          navigate("/login", { replace: true });
+          return;
+        }
+        setGmailFlow({
+          stage: "error",
+          error: error instanceof Error ? error.message : "Could not read the Gmail connection.",
+        });
+      });
+  }, [location.search, navigate]);
+
+  /** Cancel/Close: drop the pending connection (idempotent) and dismiss. */
+  async function handleGmailClose() {
+    setGmailFlow(null);
+    try {
+      await api.discardGmailOAuth();
+    } catch {
+      // Nothing pending is also a success — the row expires on its own.
+    }
+  }
+
+  /** Save: write the integration row, then refresh the grid. */
+  async function handleGmailSave(name: string) {
+    await api.completeGmailOAuth(name);
+    setGmailFlow(null);
+    setNotice("Gmail connected.");
+    reload();
+  }
+
+  /** Reconnect: same handshake, targeting the existing row. */
+  async function handleGmailReconnect(uuid: string) {
+    const { url } = await api.startGmailOAuth(uuid);
+    window.location.assign(url);
   }
 
   const rowsFor = (providerId: string): IntegrationRecord[] =>
@@ -145,6 +214,12 @@ export function IntegrationsPage() {
             </p>
           </div>
         </header>
+
+        {notice ? (
+          <p className="tpl__notice" role="status">
+            <Icon name="check" size={14} /> {notice}
+          </p>
+        ) : null}
 
         {listError ? (
           <div className="pd__panel">
@@ -227,11 +302,26 @@ export function IntegrationsPage() {
         )}
       </div>
 
-      {connectingProvider ? (
+      {connectingId === "gmail" ? (
+        <GmailConnectModal
+          onClose={() => setConnectingId(null)}
+          onStart={() => api.startGmailOAuth()}
+        />
+      ) : connectingProvider ? (
         <ConnectModal
           provider={connectingProvider}
           onClose={() => setConnectingId(null)}
           onConnect={(values) => handleConnect(connectingProvider, values)}
+        />
+      ) : null}
+
+      {gmailFlow ? (
+        <GmailConfirmModal
+          stage={gmailFlow.stage}
+          pending={gmailFlow.pending}
+          error={gmailFlow.error}
+          onClose={() => void handleGmailClose()}
+          onSave={handleGmailSave}
         />
       ) : null}
 
@@ -243,6 +333,11 @@ export function IntegrationsPage() {
           onDelete={() => handleDelete(detailRow.uuid)}
           onTestEmail={(overrides) => api.testIntegrationEmail(detailRow.uuid, overrides)}
           onSaveField={(patch) => handleSaveField(detailRow.uuid, patch)}
+          onReconnect={
+            detailProvider?.auth === "google-oauth"
+              ? () => handleGmailReconnect(detailRow.uuid)
+              : undefined
+          }
           sessionEmail={user.email}
         />
       ) : null}

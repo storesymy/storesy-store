@@ -37,6 +37,11 @@ interface Props {
    * The caller refreshes its rows; the modal clears its inline state.
    */
   onSaveField: (patch: UpdateIntegrationInput) => Promise<void>;
+  /**
+   * OAuth providers only: restart the Google handshake for THIS row. The
+   * browser leaves for Google; the caller never sees this resolve.
+   */
+  onReconnect?: () => Promise<void>;
 }
 
 interface RowProps {
@@ -189,9 +194,11 @@ export function IntegrationDetailsModal({
   onDelete,
   onTestEmail,
   onSaveField,
+  onReconnect,
   sessionEmail,
 }: Props) {
   const [deleting, setDeleting] = useState(false);
+  const [reconnecting, setReconnecting] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<string | undefined>(undefined);
@@ -297,6 +304,18 @@ export function IntegrationDetailsModal({
       setEditing((prev) => (prev ? { key: prev.key, value } : prev)),
   };
 
+  async function handleReconnect() {
+    if (!onReconnect) return;
+    setReconnecting(true);
+    setError(undefined);
+    try {
+      await onReconnect();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not start reconnect.");
+      setReconnecting(false);
+    }
+  }
+
   async function handleDelete() {
     setDeleting(true);
     setError(undefined);
@@ -328,6 +347,24 @@ export function IntegrationDetailsModal({
               editableValue={entry.name}
             />
             <Row {...rowProps} label="Brand" value={provider.label} />
+            {provider.auth === "google-oauth" ? (
+              <>
+                <Row
+                  {...rowProps}
+                  label="Gmail account"
+                  value={entry.settings.username ?? "—"}
+                />
+                <Row
+                  {...rowProps}
+                  label="Connection"
+                  value={
+                    entry.settings.auth === "oauth"
+                      ? "Google sign-in (send only)"
+                      : "Legacy App Password"
+                  }
+                />
+              </>
+            ) : null}
             {fieldRows.map((field) => {
               const isSecret = field.role === "secret";
               const hint = entry.hints[field.name];
@@ -358,6 +395,12 @@ export function IntegrationDetailsModal({
             })}
             <Row {...rowProps} label="Added" value={formatAddedAt(entry.addedAt)} />
           </dl>
+          {provider.auth === "google-oauth" && entry.settings.auth !== "oauth" ? (
+            <p className="pd-modal__error" role="alert">
+              This row predates Google sign-in and can no longer send email.
+              Reconnect to replace its stored App Password.
+            </p>
+          ) : null}
           {testFields ? (
             <div className="itg-test">
               <p className="itg-test__title">Test Email</p>
@@ -425,10 +468,19 @@ export function IntegrationDetailsModal({
                 {testing ? "Sending…" : "Test Email"}
               </Button>
             ) : null}
-            <Button variant="danger" disabled={deleting || testing} onClick={handleDelete}>
+            {onReconnect ? (
+              <Button
+                variant="secondary"
+                disabled={testing || deleting || reconnecting}
+                onClick={() => void handleReconnect()}
+              >
+                {reconnecting ? "Opening Google…" : "Reconnect"}
+              </Button>
+            ) : null}
+            <Button variant="danger" disabled={deleting || testing || reconnecting} onClick={handleDelete}>
               Delete
             </Button>
-            <Button variant="secondary" disabled={testing} onClick={onClose}>
+            <Button variant="secondary" disabled={testing || reconnecting} onClick={onClose}>
               Close
             </Button>
           </div>
