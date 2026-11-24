@@ -9,6 +9,7 @@ import {
 import type { Context } from "../core/context";
 import { fieldErrors } from "../core/context";
 import { badRequest, forbidden, notFound, unauthorized, validationFailed } from "../core/errors";
+import { allowedOrigins } from "../core/security";
 import * as usersRepo from "../models/users.repository";
 import { GmailOAuthError } from "../services/gmail.service";
 import * as gmailOAuth from "../services/gmailOAuth.service";
@@ -83,9 +84,22 @@ export async function testEmail(ctx: Context): Promise<Response> {
   );
 }
 
+/**
+ * The public SPA origin Google must return to. Behind the Pages Function the
+ * Worker's own `request.url` is the workers.dev address, not the browser's
+ * origin, so prefer the request's allow-listed Origin header and fall back to
+ * the first WEB_ORIGIN entry.
+ */
+function publicOrigin(ctx: Context): string {
+  const origin = ctx.req.headers.get("Origin");
+  const allowed = allowedOrigins(ctx.env);
+  if (origin && allowed.includes(origin)) return origin;
+  return allowed[0] ?? ctx.url.origin;
+}
+
 /** The exact Pages origin Google must return to for this request. */
 function callbackUri(ctx: Context): string {
-  return `${ctx.url.origin}/api/integrations/gmail/oauth/callback`;
+  return `${publicOrigin(ctx)}/api/integrations/gmail/oauth/callback`;
 }
 
 /**

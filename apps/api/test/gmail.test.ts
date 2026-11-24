@@ -1,4 +1,4 @@
-import { env } from "cloudflare:test";
+import { env, SELF } from "cloudflare:test";
 import { GMAIL_SEND_SCOPE } from "../src/services/gmail.service";
 import type { GmailOAuthFetch } from "../src/services/gmail.service";
 import {
@@ -16,6 +16,7 @@ import { createGmailOAuth } from "../src/services/integrations.service";
 import { fieldAad } from "../src/services/integrations.crypto";
 import { sha256Hex } from "../src/services/session.service";
 import { describe, expect, it } from "vitest";
+import { seedSession } from "./helpers";
 
 /**
  * Gmail is connected with Google OAuth, not an App Password: one sign-in
@@ -83,6 +84,25 @@ async function startState(userId: number, integrationUuid?: string): Promise<str
 }
 
 describe("gmail OAuth handshake", () => {
+  it("uses the public SPA origin for Google, not the Worker origin", async () => {
+    const { cookie } = await seedSession();
+    const response = await SELF.fetch("http://example.com/api/integrations/gmail/oauth/start", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: cookie,
+        // What the browser sends through the Pages Function.
+        Origin: "http://localhost:5173",
+      },
+      body: "{}",
+    });
+    expect(response.status).toBe(200);
+    const { url } = (await response.json()) as { url: string };
+    expect(new URL(url).searchParams.get("redirect_uri")).toBe(
+      "http://localhost:5173/api/integrations/gmail/oauth/callback",
+    );
+  });
+
   it("mints a consent URL and stores only the state's hash", async () => {
     const userId = await createUser();
     const start = await gmailOAuth.startFlow(env, userId, REDIRECT_URI);
