@@ -91,10 +91,9 @@ jobs:
       matrix:
         environment:
           - smbiz
-          # Add the other accounts after their GitHub Environment and
-          # Cloudflare resources exist:
-          # - kakbelle
-          # - kdh
+          - kakbelle
+          - kdh
+          - drhasseenah
     environment: ${{ matrix.environment }}
     runs-on: ubuntu-latest
     timeout-minutes: 20

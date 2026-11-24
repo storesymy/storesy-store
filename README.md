@@ -114,6 +114,7 @@ simply deletes the pending row; the refresh token is encrypted with
    https://smbiz.pages.dev/api/integrations/gmail/oauth/callback
    https://kakbelle.pages.dev/api/integrations/gmail/oauth/callback
    https://kdh.pages.dev/api/integrations/gmail/oauth/callback
+   https://drhasseenah.pages.dev/api/integrations/gmail/oauth/callback
    ```
 
 5. Copy the client ID and secret into each GitHub Environment:
@@ -216,13 +217,14 @@ deployed to every account in the matrix:
 
 ```
 checks ──► deploy matrix ──┬── smbiz
-                           ├── kakbelle   (add when ready)
-                           └── kdh        (add when ready)
+                           ├── kakbelle
+                           ├── kdh
+                           └── drhasseenah
 ```
 
-Accounts are fully isolated Cloudflare stacks. The matrix currently contains
-only `smbiz`; add the other two lines after their GitHub Environment and
-resources exist. Deployments are serialized across pushes
+Accounts are fully isolated Cloudflare stacks. Every account in the matrix
+deploys the same build with its own D1/KV/R2/Pages resources. Deployments are
+serialized across pushes
 (`cancel-in-progress: false`); the accounts in the matrix deploy in parallel.
 
 Within each account the order is fixed:
@@ -236,15 +238,15 @@ Within each account the order is fixed:
 
 ## Cloudflare accounts
 
-| | smbiz | kakbelle | kdh |
-| --- | --- | --- | --- |
-| GitHub Environment | `smbiz` | `kakbelle` | `kdh` |
-| Worker | `storesy-api` | `storesy-api` | `storesy-api` |
-| D1 | `storesy` | `storesy` | `storesy` |
-| KV | `storesy-kv` | `storesy-kv` | `storesy-kv` |
-| R2 | `storesy-images` | `storesy-images` | `storesy-images` |
-| Pages project | `smbiz` | `kakbelle` | `kdh` |
-| SPA URL | `https://smbiz.pages.dev` | `https://kakbelle.pages.dev` | `https://kdh.pages.dev` |
+| | smbiz | kakbelle | kdh | drhasseenah |
+| --- | --- | --- | --- | --- |
+| GitHub Environment | `smbiz` | `kakbelle` | `kdh` | `drhasseenah` |
+| Worker | `storesy-api` | `storesy-api` | `storesy-api` | `storesy-api` |
+| D1 | `storesy` | `storesy` | `storesy` | `storesy` |
+| KV | `storesy-kv` | `storesy-kv` | `storesy-kv` | `storesy-kv` |
+| R2 | `storesy-images` | `storesy-images` | `storesy-images` | `storesy-images` |
+| Pages project | `smbiz` | `kakbelle` | `kdh` | `drhasseenah` |
+| SPA URL | `https://smbiz.pages.dev` | `https://kakbelle.pages.dev` | `https://kdh.pages.dev` | `https://drhasseenah.pages.dev` |
 
 Worker, D1, KV and R2 names are account-scoped, so they can stay the same in
 every account. Pages project names become public `*.pages.dev` hostnames, so
@@ -375,12 +377,13 @@ button next to it. Changing a secret is a replacement, not an edit.
 3. Click **Run workflow**.
 4. Choose branch **main** and click **Run workflow**.
 
-The run executes checks, then deploys **smbiz** only. After it succeeds, every
-push to `main` deploys smbiz automatically.
+The run executes checks, then deploys every environment in the matrix
+(`smbiz`, `kakbelle`, `kdh`, `drhasseenah`). After it succeeds, every push to
+`main` deploys them automatically.
 
-### Adding kakbelle and kdh later
+### Adding another account later
 
-Repeat steps 1–6 with the matching label, then uncomment the account in
+Repeat steps 1–6 with the matching label, then add it to the matrix in
 `.github/workflows/ci.yml`:
 
 ```yaml
@@ -389,6 +392,7 @@ matrix:
     - smbiz
     - kakbelle
     - kdh
+    - drhasseenah
 ```
 
 ### GitHub Environment contents
@@ -401,7 +405,7 @@ WORKER_NAME          # storesy-api
 D1_DATABASE_ID
 KV_NAMESPACE_ID
 R2_BUCKET_NAME       # storesy-images
-PAGES_PROJECT_NAME   # smbiz / kakbelle / kdh
+PAGES_PROJECT_NAME   # smbiz / kakbelle / kdh / drhasseenah
 WORKERS_SUBDOMAIN    # just the subdomain, e.g. "smbiz" (before .workers.dev)
 WEB_ORIGIN           # https://<pages-subdomain> (bootstrap prints the exact value)
 ```
