@@ -92,7 +92,6 @@ jobs:
         environment:
           - smbiz
           - kakbelle
-          - kdh
           - drhasseenah
     environment: ${{ matrix.environment }}
     runs-on: ubuntu-latest
