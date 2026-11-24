@@ -4,6 +4,11 @@ import { unauthorized } from "../core/errors";
 import * as auth from "../services/auth.service";
 import { createSession, revokeSession } from "../services/session.service";
 
+/** Public: the login and sign-up pages ask whether the first slot is free. */
+export async function signupStatus(ctx: Context): Promise<Response> {
+  return ctx.json(await auth.signupStatus(ctx.env));
+}
+
 export async function signup(ctx: Context): Promise<Response> {
   const input = await ctx.body(signupSchema);
   const user = await auth.signup(ctx.env, input, ctx.clientIp);

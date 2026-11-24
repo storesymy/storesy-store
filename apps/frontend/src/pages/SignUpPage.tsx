@@ -1,11 +1,11 @@
 import { signupSchema } from "@storesy/shared";
 import type { SignupInput } from "@storesy/shared";
 import { Alert, Button, TextField } from "@storesy/ui";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 import { AuthLayout } from "../components/AuthLayout";
-import { ApiError } from "../lib/api";
+import { ApiError, api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 
 type FieldKey = keyof SignupInput;
@@ -19,6 +19,27 @@ export function SignUpPage() {
   const [errors, setErrors] = useState<FieldErrors>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  // null = checking, true = first-user slot free, false = invite-only.
+  const [signupOpen, setSignupOpen] = useState<boolean | null>(null);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .signupStatus()
+      .then((status) => {
+        if (cancelled) return;
+        setSignupOpen(status.open);
+        setStatusMessage(status.message);
+      })
+      .catch(() => {
+        // Fail open for the form; the POST still enforces the policy.
+        if (!cancelled) setSignupOpen(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   if (!loading && user) return <Navigate to="/home" replace />;
 
@@ -46,6 +67,11 @@ export function SignUpPage() {
       await signup(parsed.data);
       navigate("/home", { replace: true });
     } catch (error) {
+      if (error instanceof ApiError && error.code === "signup_closed") {
+        setSignupOpen(false);
+        setStatusMessage(error.message);
+        return;
+      }
       if (error instanceof ApiError) {
         setErrors((error.fields as FieldErrors | undefined) ?? {});
         if (!error.fields || Object.keys(error.fields).length === 0) {
@@ -57,6 +83,41 @@ export function SignUpPage() {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  if (signupOpen === null) {
+    return (
+      <AuthLayout
+        title="Create your account"
+        subtitle="Checking sign-up availability…"
+        footer={null}
+      >
+        <p className="auth__invite" role="status">
+          Checking sign-up availability…
+        </p>
+      </AuthLayout>
+    );
+  }
+
+  if (!signupOpen) {
+    return (
+      <AuthLayout
+        title="Sign-up is invite-only"
+        subtitle="This store is already set up."
+        footer={
+          <span>
+            Already have an account?{" "}
+            <Link className="auth__link" to="/login">
+              Log in
+            </Link>
+          </span>
+        }
+      >
+        <p className="auth__invite" role="status">
+          {statusMessage ?? "Please get invites from admin"}
+        </p>
+      </AuthLayout>
+    );
   }
 
   return (

@@ -1,5 +1,6 @@
 import { SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
+import { seedSession } from "./helpers";
 
 /**
  * Uptime canary: exercises the full request path (router -> middleware ->
@@ -54,15 +55,9 @@ describe("critical request path", () => {
     // Signed-out is rejected outright.
     expect((await SELF.fetch("http://example.com/api/products")).status).toBe(401);
 
-    // Sign up to get a session, then exercise the full products path.
-    const email = `smoke-products-${crypto.randomUUID()}@example.com`;
-    const signup = await SELF.fetch("http://example.com/api/auth/signup", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: "Smoke Tester", email, password: "correct horse battery" }),
-    });
-    expect(signup.status).toBe(201);
-    const cookie = (signup.headers.get("set-cookie") as string).split(";")[0] as string;
+    // Self-signup is first-user-only and the canary above already used it.
+    // A seeded account still exercises every signed-in products path.
+    const { cookie } = await seedSession();
 
     const created = await SELF.fetch("http://example.com/api/products", {
       method: "POST",

@@ -66,10 +66,22 @@ export function OrdersPage() {
   if (loading) return null;
   if (!user) return <Navigate to="/login" replace />;
 
-  /** One line item as the row summary shows it: name × qty, money right. */
-  /** Semantic pill per status; unknown values keep the neutral chip. */
+  /** Semantic pill per payment status; unknown values keep the neutral chip. */
   function statusClass(status: string): string {
     return ["paid", "pending", "failed", "cancelled"].includes(status)
+      ? `pd__pill pd__pill--${status}`
+      : "pd__pill";
+  }
+
+  const FULFILMENT_LABEL: Record<string, string> = {
+    unfulfilled: "Unfulfilled",
+    fulfilled: "Fulfilled",
+    delivered: "Delivered",
+  };
+
+  /** Semantic pill per fulfilment status (order detail uses the same palette). */
+  function fulfilmentClass(status: string): string {
+    return ["unfulfilled", "fulfilled", "delivered"].includes(status)
       ? `pd__pill pd__pill--${status}`
       : "pd__pill";
   }
@@ -135,6 +147,7 @@ export function OrdersPage() {
                     Total
                   </th>
                   <th scope="col">Status</th>
+                  <th scope="col">Fulfilment</th>
                   <th scope="col">Placed</th>
                 </tr>
               </thead>
@@ -165,6 +178,11 @@ export function OrdersPage() {
                     <td className="pd__num">{formatPrice(order.totalCents)}</td>
                     <td>
                       <span className={statusClass(order.status)}>{order.status}</span>
+                    </td>
+                    <td>
+                      <span className={fulfilmentClass(order.fulfilment.status)}>
+                        {FULFILMENT_LABEL[order.fulfilment.status] ?? order.fulfilment.status}
+                      </span>
                     </td>
                     <td className="pd__updated">{relativeTime(order.createdAt)}</td>
                   </tr>

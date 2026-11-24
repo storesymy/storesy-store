@@ -1,11 +1,11 @@
-import type { LoginInput, SignupInput, User } from "@storesy/shared";
-import { conflict, unauthorized } from "../core/errors";
+import type { LoginInput, SignupInput, SignupStatus, User } from "@storesy/shared";
+import { forbidden, unauthorized } from "../core/errors";
 import type { UserRow } from "../models/schema";
 import {
+  countUsers,
   findUserByEmail,
   findUserById,
-  insertUser,
-  isUniqueViolation,
+  insertFirstUser,
   normalizeEmail,
 } from "../models/users.repository";
 import { burnVerifyTime, defaultIterations, hashPassword, verifyPassword } from "./password";
@@ -15,6 +15,19 @@ import { entityUuid, ID_PREFIX } from "./uuid";
 /** Account creation: hourly cap per IP. */
 const SIGNUP_LIMIT = 5;
 const SIGNUP_WINDOW_MS = 60 * 60 * 1000;
+
+/** Self-signup is a one-time bootstrap; after that the store is invite-only. */
+export const SIGNUP_CLOSED_MESSAGE = "Please get invites from admin";
+
+function signupClosed() {
+  return forbidden("signup_closed", SIGNUP_CLOSED_MESSAGE);
+}
+
+/** Public status for the login/sign-up pages: is the first-user slot free? */
+export async function signupStatus(env: Env): Promise<SignupStatus> {
+  const open = (await countUsers(env)) === 0;
+  return { open, message: open ? null : SIGNUP_CLOSED_MESSAGE };
+}
 
 /** Failed+successful login attempts per email, per 15 minutes. */
 const LOGIN_LIMIT = 10;
@@ -32,6 +45,11 @@ export function toPublicUser(row: UserRow): User {
 }
 
 export async function signup(env: Env, input: SignupInput, clientIp: string): Promise<User> {
+  // The first user is the install's owner (an admin role). Once anyone exists, self-signup
+  // closes — checked before rate limiting and hashing so a closed store
+  // answers immediately.
+  if ((await countUsers(env)) > 0) throw signupClosed();
+
   await enforceRateLimit(
     env,
     `signup:${clientIp}`,
@@ -41,27 +59,16 @@ export async function signup(env: Env, input: SignupInput, clientIp: string): Pr
   );
 
   const email = normalizeEmail(input.email);
-  const existing = await findUserByEmail(env, email);
-  if (existing) {
-    throw conflict("email_taken", "An account with this email already exists");
-  }
-
   const passwordHash = await hashPassword(input.password, defaultIterations(env));
-  try {
-    const row = await insertUser(env, {
-      uuid: entityUuid(ID_PREFIX.user),
-      email,
-      name: input.name,
-      passwordHash,
-    });
-    return toPublicUser(row);
-  } catch (error) {
-    // Concurrent sign-up with the same email lands here instead of duplicating.
-    if (isUniqueViolation(error)) {
-      throw conflict("email_taken", "An account with this email already exists");
-    }
-    throw error;
-  }
+  const row = await insertFirstUser(env, {
+    uuid: entityUuid(ID_PREFIX.user),
+    email,
+    name: input.name,
+    passwordHash,
+  });
+  // Two first-signups raced; the other one won the admin slot.
+  if (!row) throw signupClosed();
+  return toPublicUser(row);
 }
 
 export async function login(env: Env, input: LoginInput, clientIp: string): Promise<User> {

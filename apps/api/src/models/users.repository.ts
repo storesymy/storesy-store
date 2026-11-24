@@ -64,6 +64,31 @@ export async function firstAdminEmail(env: Env): Promise<string | null> {
   return rows.find((row) => !isUndeliverableDemoEmail(row.email))?.email ?? null;
 }
 
+/** How many accounts exist — the self-signup policy is "first one only". */
+export async function countUsers(env: Env): Promise<number> {
+  const row = await env.DB.prepare("SELECT COUNT(*) AS count FROM users").first<{ count: number }>();
+  return row?.count ?? 0;
+}
+
+/**
+ * The only self-signup: insert the very first user as `owner`, atomically.
+ *
+ * `WHERE NOT EXISTS (SELECT 1 FROM users)` makes the first-user check part of
+ * the write itself, so two concurrent signups cannot both succeed. Returns
+ * null when the slot is already taken.
+ */
+export async function insertFirstUser(env: Env, row: NewUserRow): Promise<UserRow | null> {
+  const result = await env.DB.prepare(
+    `INSERT INTO users (uuid, email, name, password_hash, role)
+     SELECT ?1, ?2, ?3, ?4, 'owner'
+     WHERE NOT EXISTS (SELECT 1 FROM users)`,
+  )
+    .bind(row.uuid, row.email, row.name, row.passwordHash)
+    .run();
+  if ((result.meta.changes ?? 0) !== 1) return null;
+  return findUserByEmail(env, row.email);
+}
+
 export async function insertUser(env: Env, row: NewUserRow): Promise<UserRow> {
   const inserted = await db(env).insert(users).values(row).returning().all();
   const created = inserted[0];

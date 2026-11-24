@@ -1,11 +1,11 @@
 import { loginSchema } from "@storesy/shared";
 import type { LoginInput } from "@storesy/shared";
 import { Alert, Button, TextField } from "@storesy/ui";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 import { AuthLayout } from "../components/AuthLayout";
-import { ApiError } from "../lib/api";
+import { ApiError, api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 
 type FieldKey = keyof LoginInput;
@@ -19,6 +19,24 @@ export function LoginPage() {
   const [errors, setErrors] = useState<FieldErrors>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  // null = unknown, so the link stays hidden until the API says signup is open.
+  const [signupOpen, setSignupOpen] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .signupStatus()
+      .then((status) => {
+        if (!cancelled) setSignupOpen(status.open);
+      })
+      .catch(() => {
+        // Leave the link hidden when the status cannot be read; the sign-up
+        // page still explains the policy if reached directly.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   if (!loading && user) return <Navigate to="/home" replace />;
 
@@ -64,12 +82,14 @@ export function LoginPage() {
       title="Welcome back"
       subtitle="Log in to manage your store."
       footer={
-        <span>
-          New to Storesy?{" "}
-          <Link className="auth__link" to="/sign-up">
-            Create an account
-          </Link>
-        </span>
+        signupOpen ? (
+          <span>
+            New to Storesy?{" "}
+            <Link className="auth__link" to="/sign-up">
+              Create an account
+            </Link>
+          </span>
+        ) : null
       }
     >
       <form onSubmit={handleSubmit} noValidate>

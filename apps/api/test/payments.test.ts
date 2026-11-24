@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { formatOrderNo } from "@storesy/shared";
 import { GatewayError, billplzBase, createBill, getBill } from "../src/services/payments/billplz";
 import { billplzCallback, completeReturn, start, thankYou } from "../src/services/payments.service";
+import { seedSession } from "./helpers";
 
 /**
  * The money-moving half of the checkout: sending the buyer to Billplz with
@@ -451,16 +452,9 @@ describe("admin test checkout", () => {
     });
     expect(anon.status).toBe(401);
 
-    // A second account, demoted to a non-admin role, can't conjure a paid order.
-    const email = `viewer-${crypto.randomUUID()}@example.com`;
-    const signup = await SELF.fetch(`${ORIGIN}/api/auth/signup`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: "Viewer", email, password: "correct horse battery" }),
-    });
-    expect(signup.status).toBe(201);
-    const viewerCookie = (signup.headers.get("set-cookie") as string).split(";")[0] as string;
-    await env.DB.prepare("UPDATE users SET role = 'viewer' WHERE email = ?").bind(email).run();
+    // A seeded non-admin account cannot conjure a paid order. (Self-signup is
+    // first-user-only, so the second account is inserted directly.)
+    const { email, cookie: viewerCookie } = await seedSession("viewer");
 
     const denied = await simulate(viewerCookie, order.id, "success");
     expect(denied.status).toBe(403);

@@ -17,6 +17,7 @@ import { Router } from "./core/router";
 export function buildRouter(): Router {
   return new Router()
     .get("/api/health", health.health)
+    .get("/api/auth/signup-status", auth.signupStatus)
     .post("/api/auth/signup", auth.signup)
     .post("/api/auth/login", auth.login)
     .post("/api/auth/logout", auth.logout)

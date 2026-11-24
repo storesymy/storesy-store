@@ -6557,3 +6557,17 @@ button.sf-action:disabled {
     gap: 2px;
   }
 }
+
+/* Invite-only sign-up: the exact policy message, centred in the auth panel. */
+.auth__invite {
+  margin: 4px 0 6px;
+  padding: 14px 16px;
+  border: 1px solid var(--st-line);
+  border-radius: var(--st-radius);
+  background: var(--st-bg);
+  color: var(--st-ink);
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.5;
+  text-align: center;
+}

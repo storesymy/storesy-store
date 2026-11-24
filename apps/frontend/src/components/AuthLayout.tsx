@@ -18,7 +18,7 @@ export function AuthLayout({ title, subtitle, children, footer }: AuthLayoutProp
         <h1 className="auth__title">{title}</h1>
         <p className="auth__subtitle">{subtitle}</p>
         {children}
-        <div className="auth__footer">{footer}</div>
+        {footer ? <div className="auth__footer">{footer}</div> : null}
       </div>
     </div>
   );

@@ -21,6 +21,7 @@ import type {
   SalesPage as ApiSalesPage,
   SalesPageSummary,
   SignupInput,
+  SignupStatus,
   UpdateEmailTemplateInput,
   UpdateIntegrationInput,
   UpdateProductInput,
@@ -72,6 +73,9 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 export const api = {
   signup: (input: SignupInput): Promise<User> =>
     request<User>(routes.signup, { method: "POST", body: JSON.stringify(input) }),
+
+  /** Whether the one-time first-user signup is still available. */
+  signupStatus: (): Promise<SignupStatus> => request<SignupStatus>(routes.signupStatus),
 
   login: (input: LoginInput): Promise<User> =>
     request<User>(routes.login, { method: "POST", body: JSON.stringify(input) }),

@@ -54,7 +54,8 @@ sales-page documents) to the Worker, so cookies are same-origin.
 | Method | Path | Notes |
 | --- | --- | --- |
 | GET | `/api/health` | Uptime canary, no session/DB |
-| POST | `/api/auth/signup` | Rate limited5/h per IP → `201` + cookie |
+| GET | `/api/auth/signup-status` | Public: `{ open, message }` — whether the one-time first-user signup is still available |
+| POST | `/api/auth/signup` | **First user only**: creates the install's `owner`; after that `403 signup_closed` with "Please get invites from admin". Rate limited 5/h per IP → `201` + cookie |
 | POST | `/api/auth/login` | Rate limited10/15min per email → `200` + cookie, `429` + `Retry-After` |
 | POST | `/api/auth/logout` | Revokes session → `204` |
 | GET | `/api/me` | Current user → `200` / `401` |

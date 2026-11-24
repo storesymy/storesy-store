@@ -7,10 +7,20 @@ export interface User {
   id: string;
   email: string;
   name: string;
-  /** Account role, e.g. `owner` (baseline) — shown in the sidebar identity block. */
+  /** Account role: `owner` for the first self-signup; `owner`/`admin`/… after. */
   role: string;
   /** Account created at, `YYYY-MM-DD HH:MM:SS` in Asia/Kuala_Lumpur. */
   createdAt: string;
+}
+
+/**
+ * Whether self-signup is still open. Only the first user can create an
+ * account; afterwards the store is invite-only.
+ */
+export interface SignupStatus {
+  open: boolean;
+  /** `null` while open; "Please get invites from admin" once closed. */
+  message: string | null;
 }
 
 /** How a product reaches the customer — at least one channel stays on. */
@@ -437,6 +447,7 @@ export const API_BASE = "/api";
 /** Route table shared so the client can never drift from the server. */
 export const routes = {
   signup: `${API_BASE}/auth/signup`,
+  signupStatus: `${API_BASE}/auth/signup-status`,
   login: `${API_BASE}/auth/login`,
   logout: `${API_BASE}/auth/logout`,
   me: `${API_BASE}/me`,
