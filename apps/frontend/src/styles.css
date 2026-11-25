@@ -4869,7 +4869,27 @@ button.sf-action:disabled {
 }
 
 .sco__shipNum {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-height: 16px;
   font-variant-numeric: tabular-nums;
+}
+
+/* Inline loading indicator while a live shipping quote is in flight. */
+.sco__spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--sfv-line-strong, #cfd6e1);
+  border-top-color: var(--sfv-brand, #ff6500);
+  border-radius: 50%;
+  animation: sco-spin 0.7s linear infinite;
+}
+
+@keyframes sco-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .sco__row {

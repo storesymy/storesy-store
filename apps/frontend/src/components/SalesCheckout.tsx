@@ -231,6 +231,9 @@ export function SalesCheckout({ slug, productIds, payColors }: Props) {
   const shipping = requiresQuote
     ? (shippingQuote?.available ? shippingQuote.shippingCents : 0)
     : localShipping;
+  const shippingLoading = requiresQuote
+    ? quoteReady && (quoteLoading || !shippingQuote)
+    : !ratesKnown && !ratesError;
   const shippingLabel = requiresQuote
     ? !quoteReady
       ? "Enter postcode"
@@ -354,7 +357,17 @@ export function SalesCheckout({ slug, productIds, payColors }: Props) {
             {needsShipment ? (
               <div className="sco__ship">
                 <span>Shipping{courierLabel ? ` (${courierLabel})` : ""}</span>
-                <span className="sco__shipNum">{shippingLabel}</span>
+                <span className="sco__shipNum">
+                  {shippingLoading ? (
+                    <span
+                      className="sco__spinner"
+                      role="status"
+                      aria-label="Checking shipping"
+                    />
+                  ) : (
+                    shippingLabel
+                  )}
+                </span>
               </div>
             ) : null}
             <div className="sco__total">

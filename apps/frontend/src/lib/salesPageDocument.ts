@@ -516,7 +516,14 @@ const CHECKOUT_SCRIPT = [
   '    if (t.ships) {',
   '      var via = t.courier ? " (" + courierName(t.courier) + ")" : "";',
   '      shipLabelEl.textContent = "Shipping" + via;',
-  '      if (t.loading) shipNumEl.textContent = "\u2026";',
+  '      if (t.loading) {',
+  '        shipNumEl.textContent = "";',
+  '        var spinner = document.createElement("span");',
+  '        spinner.className = "sco__spinner";',
+  '        spinner.setAttribute("role", "status");',
+  '        spinner.setAttribute("aria-label", "Checking shipping");',
+  '        shipNumEl.appendChild(spinner);',
+  '      }',
   '      else if (t.reason === "destination_incomplete") shipNumEl.textContent = "Enter postcode";',
   '      else if (!t.shippingOk) shipNumEl.textContent = "Unavailable";',
   '      else shipNumEl.textContent = money(t.shipping);',
@@ -731,7 +738,10 @@ const CHECKOUT_SCRIPT = [
  */
 function checkoutRiderCss(css: string): string {
   const wanted = (header: string): boolean =>
-    header.includes(".sco") || header.includes(".ssv__wrap") || header.includes(".ssv__title");
+    header.includes(".sco") ||
+    header.includes(".ssv__wrap") ||
+    header.includes(".ssv__title") ||
+    header.includes("sco-spin");
 
   /** One top-level block: header (selector or at-rule), raw body, end offset. */
   function nextBlock(from: number): { header: string; body: string; end: number } | null {
