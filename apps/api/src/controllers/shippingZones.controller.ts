@@ -11,6 +11,11 @@ function requireSession(ctx: Context): void {
   if (!ctx.session) throw unauthorized();
 }
 
+/** Signed-out: the checkout needs the rate card before a buyer has an account. */
+export async function publicRates(ctx: Context): Promise<Response> {
+  return ctx.json(await shippingZones.publicRates(ctx.env));
+}
+
 export async function list(ctx: Context): Promise<Response> {
   requireSession(ctx);
   return ctx.json({ shippingZones: await shippingZones.list(ctx.env) });

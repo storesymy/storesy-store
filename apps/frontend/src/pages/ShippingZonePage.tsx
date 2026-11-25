@@ -22,6 +22,7 @@ import { ApiError, api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { buildNav } from "../lib/nav";
 import { formatPrice, priceToCents } from "../lib/product";
+import { refreshSalesPageDocuments } from "../lib/salesPages";
 import { useTheme } from "../lib/theme";
 
 interface ZoneForm {
@@ -42,10 +43,10 @@ const EMPTY_FORM: ZoneForm = {
 
 function priceHint(priceType: ShippingPriceType): string {
   if (priceType === "api") {
-    return "The shipping API supplies the rate at checkout; no amount is stored.";
+    return "The courier API supplies the rate at checkout; no amount is stored. Live API rates are not connected yet.";
   }
   if (priceType === "markup") {
-    return "The API rate plus this amount is charged at checkout.";
+    return "The API rate plus this amount is charged at checkout. Live API rates are not connected yet.";
   }
   return "A fixed rate charged for every order in this zone.";
 }
@@ -115,6 +116,20 @@ export function ShippingZonePage() {
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);
   }, [modalOpen]);
+
+  // Public documents bake their checkout script; rebuild them once per browser
+  // session so pages saved before zone pricing existed stop submitting the old
+  // flat total (which would loop on `409 price_changed`).
+  useEffect(() => {
+    if (loadingZones || zones.length === 0) return;
+    try {
+      if (sessionStorage.getItem("storesy.shipping-docs-refreshed")) return;
+      sessionStorage.setItem("storesy.shipping-docs-refreshed", "1");
+    } catch {
+      // Storage disabled: fall through and refresh — a rebuild is idempotent.
+    }
+    void refreshSalesPageDocuments();
+  }, [loadingZones, zones.length]);
 
   async function handleLogout() {
     setLoggingOut(true);
@@ -202,6 +217,9 @@ export function ShippingZonePage() {
         setZones((prev) => prev.map((row) => (row.id === updated.id ? updated : row)));
       }
       closeModal();
+      // Public documents are static; rebuild them so the next checkout uses
+      // the rate that was just saved instead of a stale total.
+      void refreshSalesPageDocuments();
     } catch (error) {
       if (error instanceof ApiError && error.status === 401) {
         navigate("/login", { replace: true });
@@ -230,6 +248,7 @@ export function ShippingZonePage() {
     try {
       await api.deleteShippingZone(zone.id);
       setZones((prev) => prev.filter((row) => row.id !== zone.id));
+      void refreshSalesPageDocuments();
     } catch (error) {
       if (error instanceof ApiError && error.status === 401) {
         navigate("/login", { replace: true });

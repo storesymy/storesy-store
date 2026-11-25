@@ -47,6 +47,11 @@ export const SHIPPING_ZONES: readonly ShippingZoneOption[] = [
 
 export type ShippingZoneKey = string;
 
+/** The Malaysian state/territory rows (everything between the aggregates and the countries). */
+export const SHIPPING_STATE_ZONES: readonly ShippingZoneOption[] = SHIPPING_ZONES.filter(
+  (zone) => zone.group === "state",
+);
+
 const ZONE_BY_KEY = new Map(SHIPPING_ZONES.map((zone) => [zone.key, zone]));
 
 export function isShippingZoneKey(key: string): boolean {
@@ -129,3 +134,103 @@ export const SHIPPING_ZONE_STATUS_OPTIONS = SHIPPING_ZONE_STATUSES.map((key) => 
   value: key,
   label: SHIPPING_ZONE_STATUS_LABELS[key],
 }));
+
+/* ------------------------- checkout zone resolution ------------------------- */
+
+/**
+ * Free-text state → lookup key. Drops "W.P."/"Wilayah Persekutuan" prefixes and
+ * everything that isn't a letter, so "W.P. Kuala Lumpur" and "Kuala Lumpur"
+ * resolve alike.
+ */
+export function normalizeShippingState(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/wilayah persekutuan/g, " ")
+    .replace(/\bw\.?\s*p\.?/g, " ")
+    .replace(/[^a-z]/g, "");
+}
+
+const STATE_KEY_BY_NAME = new Map<string, string>();
+for (const zone of SHIPPING_STATE_ZONES) {
+  STATE_KEY_BY_NAME.set(normalizeShippingState(zone.label), zone.key);
+}
+// Common labels the select never produces, but older customer records and
+// hand-entered addresses may carry.
+const STATE_ALIASES: Record<string, string> = {
+  penang: "my-pulau-pinang",
+  malacca: "my-melaka",
+  trengganu: "my-terengganu",
+  "n. sembilan": "my-negeri-sembilan",
+  kl: "my-kuala-lumpur",
+};
+for (const [alias, key] of Object.entries(STATE_ALIASES)) {
+  STATE_KEY_BY_NAME.set(normalizeShippingState(alias), key);
+}
+
+/**
+ * Destination → zone keys, most specific first. A Johor buyer checks
+ * `my-johor`, then `my-peninsular`, then `my-all`; a Sabah buyer checks
+ * `my-sabah`, then `my-sabah-sarawak`, then `my-all`. International buyers
+ * check their country's zone only. Empty = no zone can be derived (an unknown
+ * Malaysian state), which blocks checkout rather than guessing a price.
+ */
+export function shippingZoneCandidates(countryCode: string, state: string): string[] {
+  const country = countryCode.trim().toUpperCase();
+  if (!country) return [];
+  if (country !== "MY") return [country];
+
+  const label = state.trim();
+  if (!label) return ["my-all"];
+  const key = STATE_KEY_BY_NAME.get(normalizeShippingState(label));
+  if (!key) return [];
+  if (key === "my-sabah" || key === "my-sarawak") {
+    return [key, "my-sabah-sarawak", "my-all"];
+  }
+  return [key, "my-peninsular", "my-all"];
+}
+
+/** The fields the checkout needs from one active rate. */
+export interface ShippingRateQuote {
+  zoneKey: string;
+  courierKey: ShippingCourierKey;
+  priceType: ShippingPriceType;
+  priceCents: number | null;
+}
+
+const COURIER_RANK = new Map<string, number>(
+  SHIPPING_COURIERS.map((courier, index) => [courier.key, index]),
+);
+
+/** Whether any active rate can be charged today (a concrete flat amount). */
+export function hasPriceableShippingRates(rates: readonly ShippingRateQuote[]): boolean {
+  return rates.some(
+    (rate) => rate.priceType === "flat" && typeof rate.priceCents === "number",
+  );
+}
+
+/**
+ * First candidate zone with a priceable rate. Only `flat` is priceable today —
+ * `api`/`markup` need a live courier quote, which no integration supplies yet.
+ * Within a zone the cheapest flat rate wins; ties follow catalogue order.
+ */
+export function pickShippingRate(
+  rates: readonly ShippingRateQuote[],
+  candidates: readonly string[],
+): ShippingRateQuote | null {
+  for (const zoneKey of candidates) {
+    const usable = rates.filter(
+      (rate) =>
+        rate.zoneKey === zoneKey &&
+        rate.priceType === "flat" &&
+        typeof rate.priceCents === "number",
+    );
+    if (usable.length === 0) continue;
+    usable.sort(
+      (a, b) =>
+        (a.priceCents ?? 0) - (b.priceCents ?? 0) ||
+        (COURIER_RANK.get(a.courierKey) ?? 99) - (COURIER_RANK.get(b.courierKey) ?? 99),
+    );
+    return usable[0] ?? null;
+  }
+  return null;
+}

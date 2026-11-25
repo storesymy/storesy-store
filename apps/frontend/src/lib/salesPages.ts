@@ -5,7 +5,7 @@ import type {
   SalesPageSummary,
   UpdateSalesPageInput,
 } from "@storesy/shared";
-import { ORDER_SHIPPING_CENTS, SALESPAGE_HTML_MAX_BYTES } from "@storesy/shared";
+import { SALESPAGE_HTML_MAX_BYTES } from "@storesy/shared";
 import { ApiError, api } from "./api";
 import { fontStack } from "./googleFonts";
 import { buildSalesPageDocument } from "./salesPageDocument";
@@ -367,13 +367,6 @@ export type WidthMode = "full" | "fixed";
 
 /** The bottom-most checkout block: shown to buyers, or hidden entirely. */
 export type CheckoutMode = "show" | "none";
-
-/**
- * Flat shipping shown in the cart when it holds an item that ships — the
- * same constant the order service charges server-side (shared, so the
- * document's script, the editor preview and the API can never disagree).
- */
-export const FAKE_SHIPPING_CENTS = ORDER_SHIPPING_CENTS;
 
 /** Fixed-mode column width (px) and its editable bounds. */
 export const DEFAULT_WRAP_WIDTH = 860;
@@ -1023,6 +1016,32 @@ async function performSave(page: SalesPage): Promise<SalesPage> {
   const saved = fromWire(await api.updateSalesPage(page.id, input));
   rememberSynced(page);
   return saved;
+}
+
+/**
+ * Rebuild every page's stored public document after a shipping-rate change.
+ *
+ * The document bakes its checkout script and is otherwise only rebuilt on
+ * save, so a rate edit would leave an untouched page submitting a stale total
+ * and looping on `409 price_changed`. Best-effort: one page failing never
+ * blocks the rate write that triggered the refresh.
+ */
+export async function refreshSalesPageDocuments(): Promise<void> {
+  let summaries: Awaited<ReturnType<typeof api.salesPages>>["salesPages"];
+  try {
+    summaries = (await api.salesPages()).salesPages;
+  } catch (error) {
+    console.error("salespage_document_refresh_list_failed", error);
+    return;
+  }
+  for (const summary of summaries) {
+    try {
+      const page = fromWire(await api.salesPage(summary.id));
+      await saveSalesPage(page);
+    } catch (error) {
+      console.error("salespage_document_refresh_failed", summary.id, error);
+    }
+  }
 }
 
 /** DELETEs the page (row first, documents after — the API cleans R2 up). */

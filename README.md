@@ -59,7 +59,12 @@ sales-page documents) to the Worker, so cookies are same-origin.
 | POST | `/api/auth/login` | Rate limited10/15min per email → `200` + cookie, `429` + `Retry-After` |
 | POST | `/api/auth/logout` | Revokes session → `204` |
 | GET | `/api/me` | Current user → `200` / `401` |
-| POST | `/api/public/orders` | Place an order from a sales page's checkout — signed out, rate-limited, prices revalidated server-side → `201` / `404` / `409` / `422` / `429` |
+| GET | `/api/shipping-zones` | Delivery rates (signed in) — zone/courier keys, price type, amount, status |
+| POST | `/api/shipping-zones` | Create one rate per zone + courier → `201` / `409` duplicate / `422` |
+| PATCH | `/api/shipping-zones/:uuid` | Edit a rate → `200` / `404` / `409` / `422` |
+| DELETE | `/api/shipping-zones/:uuid` | Hard-delete a rate → `204` / `404` |
+| GET | `/api/public/shipping-rates` | Signed-out rate card for the checkout — active keys/amounts + legacy `fallbackCents` |
+| POST | `/api/public/orders` | Place an order from a sales page's checkout — signed out, rate-limited, prices and shipping revalidated server-side → `201` / `404` / `409` / `422` / `429` |
 | GET | `/api/orders` | Merchant's orders, newest first (`?page=spg_…` narrows to one page) |
 | GET | `/api/integrations` | Integration instances — **admin-only** (`401`/`403`); reads carry masked hints (`••••1234`), never a secret |
 | POST | `/api/integrations` | Create = connect: provider + name + fields validated against the shared catalogue; secrets AES-GCM encrypted at rest → `201` / `422` |
@@ -187,7 +192,20 @@ cart in `localStorage` per page and submits to `POST /api/public/orders`
 `…/api/images/[[path]].ts`). The API never trusts the page's prices: it
 recomputes every line from its own rows and answers `409 price_changed` when
 the document's baked total no longer matches (the script then reloads the
-page). Orders land as `pending` rows; the merchant reads them at
+page).
+
+Shipping comes from **Shipping Zone**. The cart reads
+`GET /api/public/shipping-rates` and charges the most specific active flat
+rate for the buyer's destination — state → Peninsular/Sabah-Sarawak → All
+State for Malaysia, or the country zone elsewhere. Within a zone the cheapest
+flat courier rate wins. `Follow API` and `API + Markup` rows are ignored until
+a courier API integration supplies a quote. With no flat rate configured at
+all, the legacy RM10.00 flat keeps an unconfigured store selling; once one
+exists, an uncovered destination is refused rather than guessed. Saving or
+deleting a zone rebuilds every page's stored document so an old page cannot
+keep submitting the previous total.
+
+Orders land as `pending` rows; the merchant reads them at
 `GET /api/orders` (sidebar → Orders). Imported/complete documents ship
 untouched — no checkout is injected into them.
 

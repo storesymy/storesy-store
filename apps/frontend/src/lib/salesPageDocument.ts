@@ -1,5 +1,10 @@
 import uiCss from "@storesy/ui/styles.css?inline";
-import { COUNTRIES, ORDER_SHIPPING_CENTS } from "@storesy/shared";
+import {
+  COUNTRIES,
+  ORDER_SHIPPING_CENTS,
+  SHIPPING_STATE_ZONES,
+  routes,
+} from "@storesy/shared";
 import type { Product } from "@storesy/shared";
 import { googleFontHref } from "./googleFonts";
 import { formatPrice, imageSrc } from "./product";
@@ -118,9 +123,21 @@ function checkoutMarkup(page: SalesPage, products: Product[]): string {
     `<input type="${type}" name="${esc(name)}" placeholder="${esc(placeholder)}" autocomplete="on">` +
     `</label>`;
 
+  // Malaysian state → zone key, baked for the cart script. The select's value
+  // is the display label (what the customer record keeps), so no free-text
+  // matching is needed at checkout.
+  const stateKeys = JSON.stringify(
+    Object.fromEntries(SHIPPING_STATE_ZONES.map((zone) => [zone.label, zone.key])),
+  );
+  const stateOptions = SHIPPING_STATE_ZONES.map(
+    (zone) => `<option value="${esc(zone.label)}">${esc(zone.label)}</option>`,
+  ).join("");
+
   return (
     `<section class="sco" data-sco data-slug="${esc(page.slug)}"` +
-    ` data-shipping="${ORDER_SHIPPING_CENTS}">` +
+    ` data-shipping="${ORDER_SHIPPING_CENTS}"` +
+    ` data-rates-url="${esc(routes.publicShippingRates)}"` +
+    ` data-states="${esc(stateKeys)}">` +
     `<div class="ssv__wrap">` +
     `<h3 class="ssv__title sco__title">Checkout</h3>` +
     // Product listing — the products picked for this page, priced in markup.
@@ -145,7 +162,14 @@ function checkoutMarkup(page: SalesPage, products: Product[]): string {
     field("address", "Address", "text", "Street address", true, true) +
     field("postcode", "Postcode", "text", "50000", false, true) +
     field("city", "City", "text", "Kuala Lumpur", false, true) +
-    field("state", "State", "text", "Selangor", true, true) +
+    `<label class="sco__field sco__field--wide" data-addr data-my-state hidden>` +
+    `<span>State</span>` +
+    `<select name="myState"><option value="">Choose a state…</option>${stateOptions}</select>` +
+    `</label>` +
+    `<label class="sco__field sco__field--wide" data-addr data-intl-state hidden>` +
+    `<span>State / Province</span>` +
+    `<input type="text" name="stateIntl" placeholder="State or province" autocomplete="on">` +
+    `</label>` +
     `<label class="sco__field sco__field--wide" data-addr hidden>` +
     `<span>Country</span>` +
     `<select name="country">` +
@@ -186,6 +210,12 @@ const CHECKOUT_SCRIPT = [
   '  if (!root) return;',
   '  var slug = root.getAttribute("data-slug");',
   '  var shippingCents = parseInt(root.getAttribute("data-shipping"), 10) || 0;',
+  '  var ratesUrl = root.getAttribute("data-rates-url");',
+  '  var stateKeys = {};',
+  '  try { stateKeys = JSON.parse(root.getAttribute("data-states") || "{}") || {}; } catch (e) { stateKeys = {}; }',
+  '  var rates = null;',
+  '  var ratesError = false;',
+  '  var fallbackCents = shippingCents;',
   '  var key = "storesy.checkout." + slug;',
   // The order timeline's first two beats, kept for this tab's session only.
   '  function eventStamp(eventKey, value) {',
@@ -219,13 +249,16 @@ const CHECKOUT_SCRIPT = [
   // The buyer's own details survive a refresh and are shared across the
   // store's pages: saved as they type, filled back on the next visit.
   '  var profileKey = "storesy.customer";',
-  '  var profileFields = ["name", "phone", "email", "address", "postcode", "city", "state", "country"];',
+  '  var profileFields = ["name", "phone", "email", "address", "postcode", "city", "country"];',
   '  function saveProfile() {',
   '    var data = {};',
   '    for (var i = 0; i < profileFields.length; i++) {',
   '      var el = formEl.elements[profileFields[i]];',
   '      if (el && el.value) data[profileFields[i]] = el.value;',
   '    }',
+  '    if (formEl.elements.myState.value) data.myState = formEl.elements.myState.value;',
+  '    if (formEl.elements.stateIntl.value) data.stateIntl = formEl.elements.stateIntl.value;',
+  '    data.state = countryValue() === "MY" ? formEl.elements.myState.value : formEl.elements.stateIntl.value;',
   '    try { localStorage.setItem(profileKey, JSON.stringify(data)); } catch (e) {}',
   '  }',
   '  try {',
@@ -236,13 +269,21 @@ const CHECKOUT_SCRIPT = [
   '        storedEl.value = storedProfile[profileFields[pf]];',
   '      }',
   '    }',
+  '    var storedCountry = storedProfile.country || "MY";',
+  '    var storedState = storedProfile.state || "";',
+  '    var storedMy = storedProfile.myState || (storedCountry === "MY" ? storedState : "");',
+  '    var storedIntl = storedProfile.stateIntl || (storedCountry !== "MY" ? storedState : "");',
+  '    if (storedMy) formEl.elements.myState.value = storedMy;',
+  '    if (storedIntl) formEl.elements.stateIntl.value = storedIntl;',
   '  } catch (e) {}',
+  '  if (!formEl.elements.country.value) formEl.elements.country.value = "MY";',
   '  var profileTimer = null;',
   '  formEl.addEventListener("input", function () {',
   '    if (profileTimer) clearTimeout(profileTimer);',
   '    profileTimer = setTimeout(saveProfile, 200);',
   '  });',
   '  formEl.addEventListener("change", saveProfile);',
+  '  formEl.addEventListener("change", render);',
   '  function setBusy(label) {',
   '    submitBtn.disabled = true;',
   '    submitBtn.classList.add("sco__pay--busy");',
@@ -258,14 +299,72 @@ const CHECKOUT_SCRIPT = [
   '  function money(cents) { return "RM" + (cents / 100).toFixed(2); }',
   '  function save() { try { localStorage.setItem(key, JSON.stringify(cart)); } catch (e) {} }',
   '  function ids() { return Object.keys(cart).filter(function (id) { return catalog[id] && cart[id] > 0; }); }',
+  '  function countryValue() {',
+  '    return (formEl.elements.country.value || "").toUpperCase();',
+  '  }',
+  '  function stateValue() {',
+  '    return countryValue() === "MY"',
+  '      ? (formEl.elements.myState.value || "")',
+  '      : (formEl.elements.stateIntl.value || "").trim();',
+  '  }',
+  // Most specific zone first, exactly like the server's shared helper.
+  '  function zoneCandidates() {',
+  '    var country = countryValue();',
+  '    if (!country) return [];',
+  '    if (country !== "MY") return [country];',
+  '    var label = stateValue();',
+  '    if (!label) return ["my-all"];',
+  '    var exact = stateKeys[label];',
+  '    if (!exact) return [];',
+  '    var fallback = exact === "my-sabah" || exact === "my-sarawak"',
+  '      ? "my-sabah-sarawak" : "my-peninsular";',
+  '    return [exact, fallback, "my-all"];',
+  '  }',
+  '  function currentRate() {',
+  '    if (!rates || rates.length === 0) return null;',
+  '    var zones = zoneCandidates();',
+  '    for (var z = 0; z < zones.length; z++) {',
+  '      var best = null;',
+  '      for (var i = 0; i < rates.length; i++) {',
+  '        var rate = rates[i];',
+  '        if (rate.zoneKey !== zones[z] || rate.priceType !== "flat" || typeof rate.priceCents !== "number") continue;',
+  '        if (!best || rate.priceCents < best.priceCents) best = rate;',
+  '      }',
+  '      if (best) return best;',
+  '    }',
+  '    return null;',
+  '  }',
+  // The legacy flat applies only while no flat (priceable) rate exists.
+  '  function shippingFor(ships) {',
+  '    if (!ships) return { cents: 0, ok: true, reason: "" };',
+  '    if (ratesError) return { cents: 0, ok: false, reason: "error" };',
+  '    if (rates === null) return { cents: fallbackCents, ok: false, reason: "loading" };',
+  '    var priceable = false;',
+  '    for (var r = 0; r < rates.length; r++) {',
+  '      if (rates[r].priceType === "flat" && typeof rates[r].priceCents === "number") { priceable = true; break; }',
+  '    }',
+  '    if (!priceable) return { cents: fallbackCents, ok: true, reason: "legacy" };',
+  '    var rate = currentRate();',
+  '    if (!rate) return { cents: 0, ok: false, reason: "unavailable" };',
+  '    return { cents: rate.priceCents, ok: true, reason: "" };',
+  '  }',
   '  function totals() {',
   '    var list = ids(), subtotal = 0, ships = false;',
   '    for (var i = 0; i < list.length; i++) {',
   '      subtotal += catalog[list[i]].price * cart[list[i]];',
   '      if (catalog[list[i]].ships) ships = true;',
   '    }',
-  '    var shipping = ships ? shippingCents : 0;',
-  '    return { list: list, subtotal: subtotal, shipping: shipping, total: subtotal + shipping, ships: ships };',
+  '    var shipping = shippingFor(ships);',
+  '    return { list: list, subtotal: subtotal, shipping: shipping.cents, total: subtotal + shipping.cents,',
+  '      ships: ships, shippingOk: shipping.ok, shippingReason: shipping.reason, loading: rates === null };',
+  '  }',
+  '  function syncStateFields(ships) {',
+  '    var my = root.querySelector("[data-my-state]");',
+  '    var intl = root.querySelector("[data-intl-state]");',
+  '    if (!my || !intl) return;',
+  '    var country = countryValue();',
+  '    my.hidden = !ships || country !== "MY";',
+  '    intl.hidden = !ships || !country || country === "MY";',
   '  }',
   '  function render() {',
   '    var t = totals();',
@@ -317,10 +416,13 @@ const CHECKOUT_SCRIPT = [
   '    cartEl.hidden = !has;',
   '    emptyEl.hidden = has;',
   '    shipEl.hidden = !t.ships;',
-  '    shipNumEl.textContent = money(t.shipping);',
+  '    if (t.ships) {',
+  '      shipNumEl.textContent = t.loading ? "\u2026" : t.shippingOk ? money(t.shipping) : "Unavailable";',
+  '    }',
   '    totalEl.textContent = money(t.total);',
   '    var addr = root.querySelectorAll("[data-addr]");',
   '    for (var j = 0; j < addr.length; j++) addr[j].hidden = !t.ships;',
+  '    syncStateFields(t.ships);',
   '  }',
   '  function fail(message) { errEl.textContent = message; errEl.hidden = false; }',
   '  function customerFromForm() {',
@@ -329,11 +431,12 @@ const CHECKOUT_SCRIPT = [
   '    if (customer.name.length < 2) { fail("Give the name for the order."); return null; }',
   '    if (customer.phone.length < 5) { fail("Give a phone number we can reach you on."); return null; }',
   '    if (!/^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(customer.email)) { fail("Enter a valid email address."); return null; }',
+  '    var country = value("country").toUpperCase();',
   '    if (totals().ships) {',
   '      customer.address = value("address");',
   '      customer.postcode = value("postcode");',
   '      customer.city = value("city");',
-  '      customer.state = value("state");',
+  '      customer.state = country === "MY" ? value("myState") : value("stateIntl");',
   '      if (!customer.address || !customer.postcode || !customer.city || !customer.state) {',
   '        fail("We need a full delivery address for items that ship.");',
   '        return null;',
@@ -383,6 +486,16 @@ const CHECKOUT_SCRIPT = [
   '  function placeOrder(mode) {',
   '    var t = totals();',
   '    if (!t.list.length) { fail("Your cart is empty — add a product first."); return; }',
+  '    if (t.ships && t.loading) {',
+  '      fail("We\'re still checking shipping — try again in a moment.");',
+  '      return;',
+  '    }',
+  '    if (t.ships && !t.shippingOk) {',
+  '      fail(t.shippingReason === "error"',
+  '        ? "We couldn\'t check shipping — refresh and try again."',
+  '        : "We can\'t ship to this address yet — choose another destination or contact the store.");',
+  '      return;',
+  '    }',
   '    var customer = customerFromForm();',
   '    if (!customer) return;',
   '    var items = t.list.map(function (id) { return { product: id, qty: cart[id] }; });',
@@ -468,6 +581,22 @@ const CHECKOUT_SCRIPT = [
   '    cart[cards[0].getAttribute("data-item")] = 1;',
   '    eventStamp("storesy.cartAt." + slug, new Date().toISOString());',
   '    save();',
+  '  }',
+  // Rates arrive from the public card; until then the button refuses to submit.
+  '  if (ratesUrl) {',
+  '    fetch(ratesUrl, { headers: { Accept: "application/json" }, cache: "no-store" })',
+  '      .then(function (response) {',
+  '        if (!response.ok) throw new Error("rates");',
+  '        return response.json();',
+  '      })',
+  '      .then(function (body) {',
+  '        rates = Array.isArray(body.rates) ? body.rates : [];',
+  '        if (typeof body.fallbackCents === "number") fallbackCents = body.fallbackCents;',
+  '        render();',
+  '      })',
+  '      .catch(function () { rates = []; ratesError = true; render(); });',
+  '  } else {',
+  '    rates = [];',
   '  }',
   '  render();',
   '})();',

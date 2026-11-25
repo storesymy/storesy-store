@@ -15,6 +15,16 @@ export async function listShippingZones(env: Env): Promise<ShippingZoneRow[]> {
   return db(env).select().from(shippingZones).orderBy(desc(shippingZones.id)).all();
 }
 
+/** Only rates a checkout may charge: paused rows never reach the rate card. */
+export async function listActiveShippingZones(env: Env): Promise<ShippingZoneRow[]> {
+  return db(env)
+    .select()
+    .from(shippingZones)
+    .where(eq(shippingZones.status, "active"))
+    .orderBy(desc(shippingZones.id))
+    .all();
+}
+
 export async function findShippingZoneByUuid(
   env: Env,
   uuid: string,

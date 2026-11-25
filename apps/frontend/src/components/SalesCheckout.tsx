@@ -1,10 +1,16 @@
-import { COUNTRIES } from "@storesy/shared";
-import type { Product } from "@storesy/shared";
+import {
+  COUNTRIES,
+  ORDER_SHIPPING_CENTS,
+  SHIPPING_STATE_ZONES,
+  hasPriceableShippingRates,
+  pickShippingRate,
+  shippingZoneCandidates,
+} from "@storesy/shared";
+import type { Product, PublicShippingRate } from "@storesy/shared";
 import { useEffect, useState } from "react";
 import type { ChangeEvent } from "react";
 import { api } from "../lib/api";
 import { formatPrice, imageSrc } from "../lib/product";
-import { FAKE_SHIPPING_CENTS } from "../lib/salesPages";
 import type { PayButtonColors } from "../lib/salesPageDocument";
 
 /** What the buyer is filling in — local to this view, never saved anywhere. */
@@ -27,7 +33,9 @@ const EMPTY_CUSTOMER: CustomerDetails = {
   postcode: "",
   city: "",
   state: "",
-  country: "",
+  // The store is Malaysian: All-State shipping shows immediately; choosing a
+  // state refines it, and international buyers change the country.
+  country: "MY",
 };
 
 /** Price the buyer pays — the sale price when a discount is running. */
@@ -65,6 +73,26 @@ export function SalesCheckout({ productIds, payColors }: Props) {
   // Product id → quantity in the cart.
   const [cart, setCart] = useState<Record<string, number>>({});
   const [customer, setCustomer] = useState<CustomerDetails>(EMPTY_CUSTOMER);
+  const [rates, setRates] = useState<PublicShippingRate[] | null>(null);
+  const [ratesError, setRatesError] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    api
+      .publicShippingRates()
+      .then(({ rates: rows }) => {
+        if (alive) setRates(rows);
+      })
+      .catch(() => {
+        if (alive) {
+          setRates([]);
+          setRatesError(true);
+        }
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   useEffect(() => {
     let alive = true;
@@ -110,8 +138,29 @@ export function SalesCheckout({ productIds, payColors }: Props) {
     .filter((line) => line.qty > 0);
   const needsShipment = lines.some((line) => line.product.fulfilment.shipment);
   const subtotal = lines.reduce((sum, line) => sum + effectivePrice(line.product) * line.qty, 0);
-  // Faked flat rate: one shipping line whenever anything in the cart ships.
-  const shipping = needsShipment ? FAKE_SHIPPING_CENTS : 0;
+  // The most specific zone for the chosen destination; only flat rates are
+  // priceable until a courier API is connected. No zones at all keeps the
+  // legacy flat rate, matching the server.
+  const quote = pickShippingRate(
+    rates ?? [],
+    shippingZoneCandidates(customer.country, customer.state),
+  );
+  const ratesKnown = rates !== null;
+  const priceable = rates !== null && hasPriceableShippingRates(rates);
+  const shipping =
+    !needsShipment || ratesError
+      ? 0
+      : !ratesKnown || !priceable
+        ? ORDER_SHIPPING_CENTS
+        : (quote?.priceCents ?? 0);
+  const shippingUnavailable =
+    needsShipment && (ratesError || (ratesKnown && priceable && quote === null));
+  const shippingLabel =
+    !ratesKnown && !ratesError
+      ? "…"
+      : shippingUnavailable
+        ? "Unavailable"
+        : formatPrice(shipping);
   const total = subtotal + shipping;
 
   const add = (id: string) => setCart((prev) => ({ ...prev, [id]: (prev[id] ?? 0) + 1 }));
@@ -214,11 +263,11 @@ export function SalesCheckout({ productIds, payColors }: Props) {
                 </button>
               </div>
             ))}
-            {/* Shipping — faked flat rate, only when something in the cart ships. */}
-            {shipping > 0 ? (
+            {/* Shipping — the zone rate for the selected destination. */}
+            {needsShipment ? (
               <div className="sco__ship">
                 <span>Shipping</span>
-                <span className="sco__shipNum">{formatPrice(shipping)}</span>
+                <span className="sco__shipNum">{shippingLabel}</span>
               </div>
             ) : null}
             <div className="sco__total">
@@ -263,12 +312,32 @@ export function SalesCheckout({ productIds, payColors }: Props) {
                 <input type="text" placeholder="Kuala Lumpur" {...field("city")} />
               </label>
               <label className="sco__field sco__field--wide">
-                <span>State</span>
-                <input type="text" placeholder="Selangor" {...field("state")} />
+                <span>{customer.country === "MY" ? "State" : "State / Province"}</span>
+                {customer.country === "MY" ? (
+                  <select {...field("state")}>
+                    <option value="">Choose a state…</option>
+                    {SHIPPING_STATE_ZONES.map((zone) => (
+                      <option key={zone.key} value={zone.label}>
+                        {zone.label}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input type="text" placeholder="State or province" {...field("state")} />
+                )}
               </label>
               <label className="sco__field sco__field--wide">
                 <span>Country</span>
-                <select {...field("country")}>
+                <select
+                  value={customer.country}
+                  onChange={(event) =>
+                    setCustomer((prev) => ({
+                      ...prev,
+                      country: event.target.value,
+                      state: "",
+                    }))
+                  }
+                >
                   <option value="">Choose a country…</option>
                   {COUNTRIES.map((country) => (
                     <option key={country.code} value={country.code}>

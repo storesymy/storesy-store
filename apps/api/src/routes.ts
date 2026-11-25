@@ -44,6 +44,9 @@ export function buildRouter(): Router {
     .post("/api/salespages", salespages.create)
     .patch("/api/salespages/:uuid", salespages.update)
     .delete("/api/salespages/:uuid", salespages.remove)
+    // The checkout's rate card — signed out, like the page that reads it.
+    // Keys and amounts only; no merchant labels or account data.
+    .get("/api/public/shipping-rates", shippingZones.publicRates)
     // Orders — the public submit is the app's only signed-out write (the
     // checkout block on `/<slug>`; rate-limited per IP, every price
     // revalidated server-side); the list is a plain session read.

@@ -62,6 +62,24 @@ export interface ShippingZone {
   updatedAt: string;
 }
 
+/**
+ * The public rate card the checkout reads before it can total a cart. Only
+ * active rates are listed; `fallbackCents` is the legacy flat rate used while
+ * a store has no zones configured, so an unconfigured install keeps selling.
+ */
+export interface PublicShippingRate {
+  zoneKey: ShippingZoneKey;
+  courierKey: ShippingCourierKey;
+  priceType: ShippingPriceType;
+  priceCents: number | null;
+}
+
+export interface PublicShippingRates {
+  rates: PublicShippingRate[];
+  /** Charged only when `rates` is empty (no zones configured yet). */
+  fallbackCents: number;
+}
+
 /** A product as the API returns it — money in cents, dates as KL text. */
 export interface Product {
   /** Public id: prefixed UUIDv7, e.g. `prd-0199f3c2-…` (time-ordered). */
@@ -300,6 +318,8 @@ export interface Order {
   subtotalCents: number;
   shippingCents: number;
   totalCents: number;
+  /** The cart held physical goods (true even when a zone charges RM0). */
+  requiresShipping: boolean;
   /** When payment landed (test checkouts use the status-change time). */
   paidAt: string | null;
   /** Gateway details for a checkout that reached one; null for test/never. */
@@ -478,6 +498,7 @@ export const routes = {
   health: `${API_BASE}/health`,
   products: `${API_BASE}/products`,
   shippingZones: `${API_BASE}/shipping-zones`,
+  publicShippingRates: `${API_BASE}/public/shipping-rates`,
   salesPages: `${API_BASE}/salespages`,
   orders: `${API_BASE}/orders`,
   customers: `${API_BASE}/customers`,

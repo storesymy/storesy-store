@@ -1,15 +1,25 @@
-import type { CreateOrderInput, Order, OrderFulfilmentStatus, OrderItem } from "@storesy/shared";
+import type {
+  CreateOrderInput,
+  Order,
+  OrderFulfilmentStatus,
+  OrderItem,
+  ShippingCourierKey,
+} from "@storesy/shared";
 import {
   ORDER_SHIPPING_CENTS,
   countryByCode,
   formatCustomerNo,
   formatOrderNo,
+  hasPriceableShippingRates,
+  pickShippingRate,
+  shippingZoneCandidates,
 } from "@storesy/shared";
 import { conflict, notFound, validationFailed } from "../core/errors";
 import * as customersModel from "../models/customers.repository";
 import * as ordersModel from "../models/orders.repository";
 import * as productsModel from "../models/products.repository";
 import * as salespagesModel from "../models/salespages.repository";
+import * as shippingZonesModel from "../models/shippingZones.repository";
 import type {
   ContactData,
   CustomerRow,
@@ -17,6 +27,7 @@ import type {
   OrderEventsData,
   OrderFulfilmentData,
   OrderRow,
+  OrderShippingData,
   ProductRow,
   SalesPageData,
 } from "../models/schema";
@@ -58,6 +69,52 @@ function shippingDetailsMissing(): never {
   });
 }
 
+interface ResolvedShipping {
+  priceCents: number;
+  /** Absent for the legacy flat rate (no zones configured). */
+  method?: OrderShippingData;
+}
+
+/**
+ * The buyer pays the rate for the most specific matching zone. With no
+ * priceable (flat) rate at all, the legacy flat keeps an unconfigured store
+ * selling; once one exists, an uncovered destination is refused instead of
+ * guessed.
+ */
+async function resolveShipping(
+  env: Env,
+  customer: { country?: string; state?: string },
+): Promise<ResolvedShipping> {
+  const rows = await shippingZonesModel.listActiveShippingZones(env);
+  const quotes = rows.map((row) => ({
+    zoneKey: row.zoneKey,
+    courierKey: row.courierKey as ShippingCourierKey,
+    priceType: row.data.priceType,
+    priceCents: row.data.priceCents,
+  }));
+  // No usable (flat) rate at all: keep the legacy flat so a store that has not
+  // finished configuring zones is not locked out of checkout.
+  if (!hasPriceableShippingRates(quotes)) return { priceCents: ORDER_SHIPPING_CENTS };
+  const country = (customer.country ?? "").toUpperCase();
+  const rate = pickShippingRate(quotes, shippingZoneCandidates(country, customer.state ?? ""));
+  if (!rate || rate.priceCents == null) {
+    throw validationFailed(
+      "Check the highlighted fields",
+      country === "MY"
+        ? { state: "We don't have a shipping rate for this address yet" }
+        : { country: "We don't have a shipping rate for this country yet" },
+    );
+  }
+  return {
+    priceCents: rate.priceCents,
+    method: {
+      zoneKey: rate.zoneKey,
+      courierKey: rate.courierKey,
+      priceCents: rate.priceCents,
+    },
+  };
+}
+
 /**
  * POST /api/public/orders — capture one checkout. The page must exist and be
  * open, every ordered product must be on that page's checkout list (the
@@ -97,12 +154,11 @@ export async function create(env: Env, input: CreateOrderInput): Promise<Order> 
     image: product.image,
   }));
   const subtotalCents = items.reduce((sum, item) => sum + item.unitCents * item.qty, 0);
-  const shippingCents = priced.some((product) => product.ships) ? ORDER_SHIPPING_CENTS : 0;
-  const totalCents = subtotalCents + shippingCents;
+  const ships = priced.some((product) => product.ships);
 
   // Anything that ships needs somewhere to ship to — the form's address
   // block is required by the document whenever shipping can apply.
-  if (shippingCents > 0) {
+  if (ships) {
     const customer = input.customer;
     if (!customer.address || !customer.postcode || !customer.city || !customer.state) {
       shippingDetailsMissing();
@@ -113,6 +169,10 @@ export async function create(env: Env, input: CreateOrderInput): Promise<Order> 
       });
     }
   }
+
+  const shipping = ships ? await resolveShipping(env, input.customer) : null;
+  const shippingCents = shipping?.priceCents ?? 0;
+  const totalCents = subtotalCents + shippingCents;
 
   // The buyer's copy of the total disagreed with ours: the prices moved
   // between the page being built and this order landing. Nothing is stored.
@@ -147,13 +207,16 @@ export async function create(env: Env, input: CreateOrderInput): Promise<Order> 
   const customer = await customersModel.upsertCustomer(env, details);
   const contact = await customersModel.findOrCreateContact(env, customer.id, details);
   // Nothing ships → nothing to fulfil: digital orders are fulfilled on
-  // creation (the merchant can only move them on to delivered).
-  const digitalOnly = shippingCents === 0;
+  // creation (the merchant can only move them on to delivered). A RM0 shipping
+  // zone is still a physical order, so this follows `ships`, not the amount.
+  const digitalOnly = !ships;
   const data: OrderData = {
     items,
     subtotalCents,
     shippingCents,
     totalCents,
+    requiresShipping: ships,
+    ...(shipping?.method ? { shipping: shipping.method } : {}),
     createdAt: now,
     updatedAt: now,
     ...(digitalOnly ? { fulfilment: { status: "fulfilled", fulfilledAt: now } } : {}),
@@ -221,6 +284,8 @@ export function toPublic(
     subtotalCents: data.subtotalCents,
     shippingCents: data.shippingCents,
     totalCents: data.totalCents,
+    // Older rows predate the flag; their amount is the only evidence.
+    requiresShipping: data.requiresShipping ?? data.shippingCents > 0,
     paidAt: data.payment?.paidAt ?? (row.status === "paid" ? data.updatedAt : null),
     payment: data.payment
       ? {
@@ -277,7 +342,8 @@ export async function setFulfilment(
   if (!found) throw notFound("order_not_found", "No order with that id");
 
   const data = found.order.data as OrderData;
-  if (data.shippingCents === 0 && status === "unfulfilled") {
+  const digitalOnly = data.requiresShipping === undefined ? data.shippingCents === 0 : !data.requiresShipping;
+  if (digitalOnly && status === "unfulfilled") {
     throw validationFailed("Check the highlighted fields", {
       status: "Digital orders are fulfilled automatically.",
     });

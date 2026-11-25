@@ -100,6 +100,9 @@ export function buildCustomerEmail(
     )
     .join("\n");
 
+  // Older order snapshots predate the flag; the amount is the fallback.
+  const requiresShipping = order.requiresShipping ?? order.shippingCents > 0;
+
   const values: Record<string, string> = {
     firstName: firstName(customer.name),
     customerName: customer.name,
@@ -110,10 +113,9 @@ export function buildCustomerEmail(
     items: itemLines(order),
     total: money(order.totalCents),
     quantity: `${units} item${units === 1 ? "" : "s"}`,
-    shippingNote:
-      order.shippingCents > 0
-        ? `We'll be in touch at ${customer.email} about delivery.`
-        : "",
+    shippingNote: requiresShipping
+      ? `We'll be in touch at ${customer.email} about delivery.`
+      : "",
     downloads: downloadLines !== "" ? `Downloads\n${downloadLines}` : "",
     testNote: order.test ? "— Test order: no payment was taken. —" : "",
   };

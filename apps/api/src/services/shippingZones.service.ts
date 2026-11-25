@@ -1,4 +1,6 @@
+import { ORDER_SHIPPING_CENTS } from "@storesy/shared";
 import type {
+  PublicShippingRates,
   ShippingCourierKey,
   ShippingZone,
   ShippingZoneInput,
@@ -36,6 +38,24 @@ function priceCentsFor(input: ShippingZoneInput): number | null {
     });
   }
   return input.priceCents;
+}
+
+/**
+ * The signed-out rate card the checkout script reads. Keys and amounts only —
+ * no merchant labels or account data. An empty card means the store has not
+ * configured zones yet, and the legacy flat rate still applies.
+ */
+export async function publicRates(env: Env): Promise<PublicShippingRates> {
+  const rows = await repo.listActiveShippingZones(env);
+  return {
+    rates: rows.map((row) => ({
+      zoneKey: row.zoneKey,
+      courierKey: row.courierKey as ShippingCourierKey,
+      priceType: row.data.priceType,
+      priceCents: row.data.priceCents,
+    })),
+    fallbackCents: ORDER_SHIPPING_CENTS,
+  };
 }
 
 export async function list(env: Env): Promise<ShippingZone[]> {

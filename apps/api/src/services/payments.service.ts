@@ -319,8 +319,8 @@ export async function thankYou(
   const customer = found.customer;
   const contact = found.contact;
   const paidAt = data.payment?.paidAt ?? data.updatedAt;
-  const shippingLine =
-    data.shippingCents > 0
+  const requiresShipping = data.requiresShipping ?? data.shippingCents > 0;
+  const shippingLine = requiresShipping
       ? `<li style="display:flex;justify-content:space-between;gap:16px;padding:10px 0;border-bottom:1px solid #eceef2">` +
         `<span>Shipping</span>` +
         `<span style="font-variant-numeric:tabular-nums">${money(data.shippingCents)}</span></li>`

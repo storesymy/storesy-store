@@ -6,7 +6,7 @@ import { AddProductModal } from "./AddProductModal";
 import { AddTrackingModal } from "./AddTrackingModal";
 import { api } from "../lib/api";
 import { formatPrice, imageSrc } from "../lib/product";
-import { FAKE_SHIPPING_CENTS, primeCheckoutProducts } from "../lib/salesPages";
+import { primeCheckoutProducts } from "../lib/salesPages";
 import type { CheckoutMode, SalesPageStyle } from "../lib/salesPages";
 
 interface Props {
@@ -359,8 +359,9 @@ export function SalesCheckoutPanel({
       <div className="sp__group">
         <span className="sp__groupTitle">Shipping</span>
         <p className="sp__note">
-          {formatPrice(FAKE_SHIPPING_CENTS)} flat, added once when the cart holds an item that
-          needs shipment. Faked for now — real rates come later.
+          Rates come from <strong>Shipping Zone</strong>: the most specific zone for the buyer’s
+          state or country, with the cheapest flat courier rate applied once per order. Until a
+          store configures any zone, checkout keeps the legacy RM10.00 flat rate.
         </p>
       </div>
     </div>

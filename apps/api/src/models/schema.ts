@@ -245,11 +245,26 @@ export interface OrderEventsData {
   addedAt?: string;
 }
 
+/** The chosen delivery rate, snapshotted so a later edit cannot rewrite history. */
+export interface OrderShippingData {
+  zoneKey: string;
+  courierKey: string;
+  priceCents: number;
+}
+
 export interface OrderData {
   items: OrderItemData[];
   subtotalCents: number;
   shippingCents: number;
   totalCents: number;
+  /**
+   * The cart held something physical. Unlike `shippingCents > 0` this stays
+   * true for a RM0 zone (free-shipping promotion), so fulfilment still knows
+   * the order has a parcel. Absent on older rows — fall back to the amount.
+   */
+  requiresShipping?: boolean;
+  /** The zone/courier/amount the checkout charged (absent for legacy flat). */
+  shipping?: OrderShippingData;
   createdAt: string;
   updatedAt: string;
   /** Present once the buyer has been sent to a payment gateway. */

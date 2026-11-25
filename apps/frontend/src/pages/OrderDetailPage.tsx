@@ -157,7 +157,7 @@ export function OrderDetailPage() {
     countryName,
   ].filter((line): line is string => typeof line === "string" && line !== "");
 
-  const digitalOnly = order.shippingCents === 0;
+  const digitalOnly = !order.requiresShipping;
   const paymentLabel = PAYMENT_LABEL[order.status] ?? order.status;
   const fulfilmentLabel = FULFILMENT_LABEL[order.fulfilment.status];
   const fulfilmentPill = `pd__pill pd__pill--${order.fulfilment.status}`;
@@ -234,7 +234,7 @@ export function OrderDetailPage() {
               <div className="od__row">
                 <dt>Method</dt>
                 <dd>
-                  {order.shippingCents > 0
+                  {order.requiresShipping
                     ? `Shipping · ${formatPrice(order.shippingCents)}`
                     : "Digital delivery"}
                 </dd>
