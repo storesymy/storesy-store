@@ -63,7 +63,8 @@ sales-page documents) to the Worker, so cookies are same-origin.
 | POST | `/api/shipping-zones` | Create one rate per zone + courier → `201` / `409` duplicate / `422` |
 | PATCH | `/api/shipping-zones/:uuid` | Edit a rate → `200` / `404` / `409` / `422` |
 | DELETE | `/api/shipping-zones/:uuid` | Hard-delete a rate → `204` / `404` |
-| GET | `/api/public/shipping-rates` | Signed-out rate card for the checkout — active keys/amounts + legacy `fallbackCents` |
+| GET | `/api/public/shipping-rates` | Signed-out rate card for the checkout — active keys/amounts, `requiresQuote`, courier labels + legacy `fallbackCents` |
+| POST | `/api/public/shipping-quote` | Quote one allowlisted cart for a destination — flat zones, or a live MyParcel Asia domestic rate; rate-limited → `200` / `404` / `422` / `429` |
 | POST | `/api/public/orders` | Place an order from a sales page's checkout — signed out, rate-limited, prices and shipping revalidated server-side → `201` / `404` / `409` / `422` / `429` |
 | GET | `/api/orders` | Merchant's orders, newest first (`?page=spg_…` narrows to one page) |
 | GET | `/api/integrations` | Integration instances — **admin-only** (`401`/`403`); reads carry masked hints (`••••1234`), never a secret |
@@ -194,16 +195,30 @@ recomputes every line from its own rows and answers `409 price_changed` when
 the document's baked total no longer matches (the script then reloads the
 page).
 
-Shipping comes from **Shipping Zone**. The cart reads
-`GET /api/public/shipping-rates` and charges the most specific active flat
-rate for the buyer's destination — state → Peninsular/Sabah-Sarawak → All
-State for Malaysia, or the country zone elsewhere. Within a zone the cheapest
-flat courier rate wins. `Follow API` and `API + Markup` rows are ignored until
-a courier API integration supplies a quote. With no flat rate configured at
-all, the legacy RM10.00 flat keeps an unconfigured store selling; once one
-exists, an uncovered destination is refused rather than guessed. Saving or
-deleting a zone rebuilds every page's stored document so an old page cannot
-keep submitting the previous total.
+Shipping comes from **Shipping Zone**. The most specific active rate for the
+buyer's destination wins — state → Peninsular/Sabah-Sarawak → All State for
+Malaysia, or the country zone elsewhere. Flat rows charge their stored amount;
+`Follow API` rows ask **MyParcel Asia** for a live domestic quote, and
+`API + Markup` adds the stored amount to that quote. Within a zone the cheapest
+usable courier wins; the cart shows the courier, e.g. `Shipping (J&T)`.
+
+Live rate rules:
+
+- Domestic Malaysia only. International API rows are skipped; international
+  flat rows still work.
+- Parcel weight is the greater of actual and volumetric weight
+  (`L×W×H/5000`) per unit, summed over the cart. Missing weight **and**
+  dimensions blocks API pricing; a configured flat row in the same zone can
+  still be used.
+- MyParcel Asia needs a connected integration with a **sender postcode**.
+  Without it, API-only zones are refused.
+- A provider failure is refused — it never silently falls back to a broader
+  flat rate. A flat row in the same zone is a valid alternative.
+- With no active zones at all, the legacy RM10.00 flat keeps an unconfigured
+  store selling; once any zone exists, an uncovered destination is refused.
+
+Saving or deleting a zone rebuilds every page's stored document so an old page
+cannot keep submitting the previous total.
 
 Orders land as `pending` rows; the merchant reads them at
 `GET /api/orders` (sidebar → Orders). Imported/complete documents ship

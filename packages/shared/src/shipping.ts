@@ -85,6 +85,11 @@ export function courierLabel(key: string): string {
   return COURIER_BY_KEY.get(key)?.label ?? key;
 }
 
+/** Merchant-facing label without the MPA prefix, e.g. `J&T` for the cart line. */
+export function courierShortLabel(key: string): string {
+  return courierLabel(key).replace(/^MPA - /, "");
+}
+
 /**
  * How the rate is produced: a fixed amount, whatever the shipping API quotes,
  * or API quote + a fixed markup.

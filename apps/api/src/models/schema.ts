@@ -250,6 +250,10 @@ export interface OrderShippingData {
   zoneKey: string;
   courierKey: string;
   priceCents: number;
+  /** How the amount was produced; absent on snapshots written before zones. */
+  priceType?: "flat" | "api" | "markup";
+  /** Live-rate provider, or null for a stored flat amount. */
+  provider?: "myparcel-asia" | null;
 }
 
 export interface OrderData {

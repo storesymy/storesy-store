@@ -360,8 +360,10 @@ export function SalesCheckoutPanel({
         <span className="sp__groupTitle">Shipping</span>
         <p className="sp__note">
           Rates come from <strong>Shipping Zone</strong>: the most specific zone for the buyer’s
-          state or country, with the cheapest flat courier rate applied once per order. Until a
-          store configures any zone, checkout keeps the legacy RM10.00 flat rate.
+          state or country. Flat rows charge their stored amount; Follow API rows ask{" "}
+          <strong>MyParcel Asia</strong> for a live domestic quote, and API + Markup adds the
+          stored amount. Until a store configures any zone, checkout keeps the legacy RM10.00
+          flat rate.
         </p>
       </div>
     </div>

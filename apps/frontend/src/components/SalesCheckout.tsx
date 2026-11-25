@@ -6,7 +6,7 @@ import {
   pickShippingRate,
   shippingZoneCandidates,
 } from "@storesy/shared";
-import type { Product, PublicShippingRate } from "@storesy/shared";
+import type { Product, PublicShippingRate, ShippingQuote } from "@storesy/shared";
 import { useEffect, useState } from "react";
 import type { ChangeEvent } from "react";
 import { api } from "../lib/api";
@@ -44,6 +44,8 @@ function effectivePrice(product: Product): number {
 }
 
 interface Props {
+  /** The page's public slug — the quote endpoint validates its cart list. */
+  slug: string;
   /**
    * The page's picked product ids (Checkout tab → Select Product), listing
    * order — the block sells exactly these, not the whole catalogue. Ids that
@@ -66,7 +68,7 @@ interface Props {
  * The pay button is visual only for now. Cart and form state stay local to
  * the rendered view, like a real buyer's browser session.
  */
-export function SalesCheckout({ productIds, payColors }: Props) {
+export function SalesCheckout({ slug, productIds, payColors }: Props) {
   // null = still loading; the store's active products back the listing.
   const [products, setProducts] = useState<Product[] | null>(null);
   const [failed, setFailed] = useState(false);
@@ -75,13 +77,20 @@ export function SalesCheckout({ productIds, payColors }: Props) {
   const [customer, setCustomer] = useState<CustomerDetails>(EMPTY_CUSTOMER);
   const [rates, setRates] = useState<PublicShippingRate[] | null>(null);
   const [ratesError, setRatesError] = useState(false);
+  const [requiresQuote, setRequiresQuote] = useState(false);
+  const [couriers, setCouriers] = useState<Record<string, string>>({});
+  const [shippingQuote, setShippingQuote] = useState<ShippingQuote | null>(null);
+  const [quoteLoading, setQuoteLoading] = useState(false);
 
   useEffect(() => {
     let alive = true;
     api
       .publicShippingRates()
-      .then(({ rates: rows }) => {
-        if (alive) setRates(rows);
+      .then(({ rates: rows, requiresQuote: needsQuote, couriers: labels }) => {
+        if (!alive) return;
+        setRates(rows);
+        setRequiresQuote(needsQuote);
+        setCouriers(Object.fromEntries(labels.map((label) => [label.key, label.label])));
       })
       .catch(() => {
         if (alive) {
@@ -138,29 +147,107 @@ export function SalesCheckout({ productIds, payColors }: Props) {
     .filter((line) => line.qty > 0);
   const needsShipment = lines.some((line) => line.product.fulfilment.shipment);
   const subtotal = lines.reduce((sum, line) => sum + effectivePrice(line.product) * line.qty, 0);
-  // The most specific zone for the chosen destination; only flat rates are
-  // priceable until a courier API is connected. No zones at all keeps the
-  // legacy flat rate, matching the server.
-  const quote = pickShippingRate(
+  const cartKey = lines.map((line) => `${line.product.id}:${line.qty}`).join(",");
+
+  // Flat-only stores keep the local calculation. A store with any API/markup
+  // row asks the server instead; the server owns weight, zone and MPA pricing.
+  const flatRate = pickShippingRate(
     rates ?? [],
     shippingZoneCandidates(customer.country, customer.state),
   );
   const ratesKnown = rates !== null;
   const priceable = rates !== null && hasPriceableShippingRates(rates);
-  const shipping =
+  const localShipping =
     !needsShipment || ratesError
       ? 0
       : !ratesKnown || !priceable
         ? ORDER_SHIPPING_CENTS
-        : (quote?.priceCents ?? 0);
-  const shippingUnavailable =
-    needsShipment && (ratesError || (ratesKnown && priceable && quote === null));
-  const shippingLabel =
-    !ratesKnown && !ratesError
+        : (flatRate?.priceCents ?? 0);
+  const localUnavailable =
+    needsShipment && (ratesError || (ratesKnown && priceable && flatRate === null));
+
+  const quoteReady =
+    !!customer.country &&
+    (customer.country !== "MY" || /^\d{5}$/.test(customer.postcode.trim()));
+
+  useEffect(() => {
+    if (!requiresQuote || !needsShipment || !quoteReady) {
+      setShippingQuote(null);
+      setQuoteLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setQuoteLoading(true);
+    const timer = setTimeout(() => {
+      api
+        .shippingQuote({
+          slug,
+          items: lines.map((line) => ({ product: line.product.id, qty: line.qty })),
+          destination: {
+            country: customer.country,
+            state: customer.state,
+            postcode: customer.postcode,
+            city: customer.city,
+          },
+        })
+        .then((result) => {
+          if (!cancelled) setShippingQuote(result);
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setShippingQuote({
+              available: false,
+              source: null,
+              shippingCents: 0,
+              zoneKey: null,
+              courierKey: null,
+              priceType: null,
+              provider: null,
+              reason: "provider_unavailable",
+              message: "Shipping is temporarily unavailable — please try again.",
+            });
+          }
+        })
+        .finally(() => {
+          if (!cancelled) setQuoteLoading(false);
+        });
+    }, 350);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [
+    requiresQuote,
+    needsShipment,
+    quoteReady,
+    slug,
+    cartKey,
+    customer.country,
+    customer.state,
+    customer.postcode,
+    customer.city,
+  ]);
+
+  const shipping = requiresQuote
+    ? (shippingQuote?.available ? shippingQuote.shippingCents : 0)
+    : localShipping;
+  const shippingLabel = requiresQuote
+    ? !quoteReady
+      ? "Enter postcode"
+      : quoteLoading || !shippingQuote
+        ? "…"
+        : shippingQuote.available
+          ? formatPrice(shippingQuote.shippingCents)
+          : "Unavailable"
+    : !ratesKnown && !ratesError
       ? "…"
-      : shippingUnavailable
+      : localUnavailable
         ? "Unavailable"
-        : formatPrice(shipping);
+        : formatPrice(localShipping);
+  const courierKey = requiresQuote
+    ? (shippingQuote?.available ? shippingQuote.courierKey : null)
+    : (flatRate?.courierKey ?? null);
+  const courierLabel = courierKey ? (couriers[courierKey] ?? courierKey) : "";
   const total = subtotal + shipping;
 
   const add = (id: string) => setCart((prev) => ({ ...prev, [id]: (prev[id] ?? 0) + 1 }));
@@ -266,7 +353,7 @@ export function SalesCheckout({ productIds, payColors }: Props) {
             {/* Shipping — the zone rate for the selected destination. */}
             {needsShipment ? (
               <div className="sco__ship">
-                <span>Shipping</span>
+                <span>Shipping{courierLabel ? ` (${courierLabel})` : ""}</span>
                 <span className="sco__shipNum">{shippingLabel}</span>
               </div>
             ) : null}

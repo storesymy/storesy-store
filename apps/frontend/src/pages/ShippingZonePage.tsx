@@ -43,10 +43,10 @@ const EMPTY_FORM: ZoneForm = {
 
 function priceHint(priceType: ShippingPriceType): string {
   if (priceType === "api") {
-    return "The courier API supplies the rate at checkout; no amount is stored. Live API rates are not connected yet.";
+    return "The courier API supplies the rate at checkout; no amount is stored. Needs a connected MyParcel Asia account with a sender postcode.";
   }
   if (priceType === "markup") {
-    return "The API rate plus this amount is charged at checkout. Live API rates are not connected yet.";
+    return "The API rate plus this amount is charged at checkout. Needs a connected MyParcel Asia account with a sender postcode.";
   }
   return "A fixed rate charged for every order in this zone.";
 }

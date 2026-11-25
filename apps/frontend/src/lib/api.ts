@@ -22,6 +22,8 @@ import type {
   SalesPage as ApiSalesPage,
   SalesPageSummary,
   SignupInput,
+  ShippingQuote,
+  ShippingQuoteInput,
   ShippingZone,
   ShippingZoneInput,
   SignupStatus,
@@ -210,6 +212,14 @@ export const api = {
   /** The signed-out rate card the checkout reads to total a cart. */
   publicShippingRates: (): Promise<PublicShippingRates> =>
     request<PublicShippingRates>(routes.publicShippingRates, { cache: "no-store" }),
+
+  /** The server's live shipping price for one cart + destination. */
+  shippingQuote: (input: ShippingQuoteInput): Promise<ShippingQuote> =>
+    request<ShippingQuote>(routes.publicShippingQuote, {
+      method: "POST",
+      body: JSON.stringify(input),
+      cache: "no-store",
+    }),
 
   createShippingZone: (input: ShippingZoneInput): Promise<ShippingZone> =>
     request<ShippingZone>(routes.shippingZones, {

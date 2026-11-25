@@ -402,6 +402,26 @@ export const createOrderSchema = z.object({
   events: orderEventsSchema.optional(),
 });
 
+/**
+ * POST /api/public/shipping-quote — the cart asks the server what delivery
+ * costs for this destination. Items are the same allowlisted order lines;
+ * weights come from the merchant's product rows, never the browser.
+ */
+export const shippingQuoteSchema = z.object({
+  slug: salesPageSlugSchema,
+  items: z.array(orderItemSchema).min(1, "Your cart is empty").max(30, "Too many items"),
+  destination: z.object({
+    country: z
+      .string()
+      .trim()
+      .toUpperCase()
+      .refine((code) => countryByCode(code) !== null, "Choose a valid country"),
+    state: z.string().trim().max(120).optional(),
+    postcode: z.string().trim().max(12).optional(),
+    city: z.string().trim().max(120).optional(),
+  }),
+});
+
 /** PATCH /api/orders/:uuid/fulfilment — the merchant's shipping progress. */
 /**
  * Editing an automated email. Subject and message stay plain text; every
@@ -533,6 +553,7 @@ export const updateSalesPageSchema = z
 export type SignupInput = z.infer<typeof signupSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
 export type ShippingZoneInput = z.infer<typeof shippingZoneInputSchema>;
+export type ShippingQuoteInput = z.infer<typeof shippingQuoteSchema>;
 export type CreateProductInput = z.infer<typeof createProductSchema>;
 export type UpdateProductInput = z.infer<typeof updateProductSchema>;
 export type CreateSalesPageInput = z.infer<typeof createSalesPageSchema>;

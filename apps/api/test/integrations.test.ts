@@ -83,6 +83,7 @@ describe("catalogue contract", () => {
     expect(myparcel?.fields.map((field) => field.label)).toEqual([
       "Name",
       "Host",
+      "Sender postcode",
       "API Key",
       "API Secret",
     ]);
@@ -425,6 +426,7 @@ describe("end-to-end as admin", () => {
         name: "MPA Live",
         fields: {
           host: "app.myparcelasia.com",
+          senderPostcode: "60000",
           apiKey: "mpa_key_2233",
           apiSecret: "mpa_secret_4455",
         },
@@ -432,7 +434,10 @@ describe("end-to-end as admin", () => {
     });
     expect(myparcel.status).toBe(201);
     const mpa = (await myparcel.json()) as IntegrationDto;
-    expect(mpa.settings).toEqual({ host: "app.myparcelasia.com" });
+    expect(mpa.settings).toEqual({
+      host: "app.myparcelasia.com",
+      senderPostcode: "60000",
+    });
     expect(mpa.hints).toEqual({ apiKey: "••••2233", apiSecret: "••••4455" });
     expect(JSON.stringify(mpa)).not.toContain("mpa_secret_4455");
 
@@ -442,7 +447,12 @@ describe("end-to-end as admin", () => {
       body: JSON.stringify({
         provider: "myparcel-asia",
         name: "MPA Bad",
-        fields: { host: "mpa.example.com", apiKey: "mpa_key_2233", apiSecret: "mpa_secret_4455" },
+        fields: {
+          host: "mpa.example.com",
+          senderPostcode: "60000",
+          apiKey: "mpa_key_2233",
+          apiSecret: "mpa_secret_4455",
+        },
       }),
     });
     expect(badMpaHost.status).toBe(422);

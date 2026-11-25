@@ -1,4 +1,4 @@
-import { asc, eq } from "drizzle-orm";
+import { asc, desc, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import type { IntegrationRow, NewIntegrationRow } from "./schema";
 import { integrations } from "./schema";
@@ -15,6 +15,23 @@ function db(env: Env) {
  */
 export async function listIntegrations(env: Env): Promise<IntegrationRow[]> {
   return db(env).select().from(integrations).orderBy(asc(integrations.id)).all();
+}
+
+/**
+ * The newest CONNECTED instance of one provider. Shipping quotes use the most
+ * recently added live MyParcel Asia account; older rows stay for history.
+ */
+export async function findLatestConnectedIntegration(
+  env: Env,
+  provider: string,
+): Promise<IntegrationRow | null> {
+  const rows = await db(env)
+    .select()
+    .from(integrations)
+    .where(eq(integrations.provider, provider))
+    .orderBy(desc(integrations.id))
+    .all();
+  return rows.find((row) => row.data.connected) ?? null;
 }
 
 export async function findIntegration(env: Env, uuid: string): Promise<IntegrationRow | null> {

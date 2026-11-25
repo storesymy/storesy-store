@@ -265,6 +265,12 @@ export const INTEGRATION_PROVIDERS: IntegrationProvider[] = [
         type: "select",
         options: ["app.myparcelasia.com", "demo.myparcelasia.com"],
       },
+      {
+        name: "senderPostcode",
+        label: "Sender postcode",
+        role: "config",
+        placeholder: "e.g. 60000",
+      },
       { name: "apiKey", label: "API Key", role: "secret", type: "password" },
       { name: "apiSecret", label: "API Secret", role: "secret", type: "password" },
     ],

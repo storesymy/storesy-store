@@ -1,7 +1,10 @@
-import { shippingZoneInputSchema } from "@storesy/shared";
+import { shippingQuoteSchema, shippingZoneInputSchema } from "@storesy/shared";
 import type { Context } from "../core/context";
 import { unauthorized } from "../core/errors";
+import * as checkout from "../services/checkout.service";
+import * as quotes from "../services/shippingQuote.service";
 import * as shippingZones from "../services/shippingZones.service";
+import { enforceRateLimit } from "../services/rate-limit.service";
 
 /**
  * Shipping Zone is a normal signed-in app page: profile pricing is not
@@ -14,6 +17,24 @@ function requireSession(ctx: Context): void {
 /** Signed-out: the checkout needs the rate card before a buyer has an account. */
 export async function publicRates(ctx: Context): Promise<Response> {
   return ctx.json(await shippingZones.publicRates(ctx.env));
+}
+
+/**
+ * POST /api/public/shipping-quote — signed out, like the checkout. The cart
+ * sends its allowlisted lines and destination; weight, zone and any live
+ * MyParcel Asia quote are all resolved server-side.
+ */
+export async function quote(ctx: Context): Promise<Response> {
+  await enforceRateLimit(
+    ctx.env,
+    `shipping-quote:${ctx.clientIp}`,
+    120,
+    10 * 60 * 1000,
+    "Too many shipping checks — please wait a moment.",
+  );
+  const input = await ctx.body(shippingQuoteSchema);
+  const { lines } = await checkout.resolveCheckout(ctx.env, input.slug, input.items);
+  return ctx.json(await quotes.quoteShipping(ctx.env, { lines, destination: input.destination }));
 }
 
 export async function list(ctx: Context): Promise<Response> {

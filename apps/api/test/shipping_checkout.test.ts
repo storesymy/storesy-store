@@ -43,7 +43,9 @@ async function createProduct(name: string, type: "physical" | "digital"): Promis
     headers: jsonHeaders(),
     body: JSON.stringify({
       price: 1000,
-      ...(type === "digital" ? { fulfilment: { shipment: false, download: true } } : {}),
+      ...(type === "digital"
+        ? { fulfilment: { shipment: false, download: true } }
+        : { weightKg: 1, widthCm: 20, heightCm: 10, lengthCm: 30 }),
     }),
   });
   expect(updated.status).toBe(200);
@@ -139,7 +141,16 @@ describe("checkout shipping zones", () => {
   it("publishes an empty rate card with the legacy fallback", async () => {
     const response = await SELF.fetch(`${ORIGIN}/api/public/shipping-rates`);
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ rates: [], fallbackCents: 1000 });
+    const body = (await response.json()) as {
+      rates: unknown[];
+      fallbackCents: number;
+      requiresQuote: boolean;
+      couriers: { key: string; label: string }[];
+    };
+    expect(body.rates).toEqual([]);
+    expect(body.fallbackCents).toBe(1000);
+    expect(body.requiresQuote).toBe(false);
+    expect(body.couriers.find((courier) => courier.key === "jnt")?.label).toBe("J&T");
   });
 
   it("charges the legacy flat rate until a zone exists", async () => {
@@ -151,12 +162,12 @@ describe("checkout shipping zones", () => {
     expect(order.requiresShipping).toBe(true);
   });
 
-  it("keeps the legacy flat when every configured rate needs a live API", async () => {
+  it("refuses API-only zones when MyParcel Asia is not configured", async () => {
     await addZone({ zoneKey: "my-all", courierKey: "ninjavan", priceType: "api", priceCents: null });
-    const order = await placed(
-      await submit([{ product: physicalId, qty: 1 }], CUSTOMER, 2000),
-    );
-    expect(order.shippingCents).toBe(1000);
+    const response = await submit([{ product: physicalId, qty: 1 }], CUSTOMER, 2000);
+    expect(response.status).toBe(422);
+    const body = (await response.json()) as { error: { fields?: Record<string, string> } };
+    expect(body.error.fields?.shipping).toBeTruthy();
   });
 
   it("uses the most specific zone, then broader fallbacks", async () => {
@@ -205,15 +216,14 @@ describe("checkout shipping zones", () => {
     );
     expect(johor.shippingCents).toBe(600);
 
-    const terengganu = await placed(
-      await submit(
-        [{ product: physicalId, qty: 1 }],
-        { ...CUSTOMER, state: "Terengganu", city: "Kuala Terengganu", postcode: "20000" },
-        1700,
-      ),
+    // The specific zone has only an API row; with MyParcel Asia unconfigured
+    // the quote is refused rather than silently falling back to Peninsular.
+    const terengganu = await submit(
+      [{ product: physicalId, qty: 1 }],
+      { ...CUSTOMER, state: "Terengganu", city: "Kuala Terengganu", postcode: "20000" },
+      1700,
     );
-    // The zone has only an API rate, so the peninsular flat applies.
-    expect(terengganu.shippingCents).toBe(700);
+    expect(terengganu.status).toBe(422);
 
     const singapore = await placed(
       await submit(
@@ -231,8 +241,10 @@ describe("checkout shipping zones", () => {
     const body = (await response.json()) as {
       rates: { zoneKey: string; priceType: string; priceCents: number | null }[];
       fallbackCents: number;
+      requiresQuote: boolean;
     };
     expect(body.fallbackCents).toBe(1000);
+    expect(body.requiresQuote).toBe(true);
     expect(body.rates).toHaveLength(10);
     expect(body.rates.some((rate) => rate.zoneKey === "US")).toBe(false);
     expect(
@@ -295,6 +307,8 @@ describe("checkout shipping zones", () => {
       zoneKey: "my-selangor",
       courierKey: "jnt",
       priceCents: 500,
+      priceType: "flat",
+      provider: null,
     });
     expect(data.requiresShipping).toBe(true);
   });

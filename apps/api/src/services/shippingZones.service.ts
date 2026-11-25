@@ -1,4 +1,4 @@
-import { ORDER_SHIPPING_CENTS } from "@storesy/shared";
+import { ORDER_SHIPPING_CENTS, SHIPPING_COURIERS, courierShortLabel } from "@storesy/shared";
 import type {
   PublicShippingRates,
   ShippingCourierKey,
@@ -55,6 +55,13 @@ export async function publicRates(env: Env): Promise<PublicShippingRates> {
       priceCents: row.data.priceCents,
     })),
     fallbackCents: ORDER_SHIPPING_CENTS,
+    requiresQuote: rows.some(
+      (row) => row.data.priceType === "api" || row.data.priceType === "markup",
+    ),
+    couriers: SHIPPING_COURIERS.map((courier) => ({
+      key: courier.key,
+      label: courierShortLabel(courier.key),
+    })),
   };
 }
 

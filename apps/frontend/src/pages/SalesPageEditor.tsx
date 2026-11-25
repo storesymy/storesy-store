@@ -583,7 +583,7 @@ export function SalesPageEditor() {
           and picks which products it sells. Framed documents get it as a
           rider at save time, so the pin previews that too. */}
       {style.checkout === "show" ? (
-        <SalesCheckout productIds={page.checkoutProducts} payColors={payColors} />
+        <SalesCheckout slug={page.slug} productIds={page.checkoutProducts} payColors={payColors} />
       ) : null}
     </div>
   );

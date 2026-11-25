@@ -3,23 +3,14 @@ import type {
   Order,
   OrderFulfilmentStatus,
   OrderItem,
-  ShippingCourierKey,
+  ShippingQuote,
 } from "@storesy/shared";
-import {
-  ORDER_SHIPPING_CENTS,
-  countryByCode,
-  formatCustomerNo,
-  formatOrderNo,
-  hasPriceableShippingRates,
-  pickShippingRate,
-  shippingZoneCandidates,
-} from "@storesy/shared";
+import { countryByCode, formatCustomerNo, formatOrderNo } from "@storesy/shared";
 import { conflict, notFound, validationFailed } from "../core/errors";
 import * as customersModel from "../models/customers.repository";
 import * as ordersModel from "../models/orders.repository";
 import * as productsModel from "../models/products.repository";
 import * as salespagesModel from "../models/salespages.repository";
-import * as shippingZonesModel from "../models/shippingZones.repository";
 import type {
   ContactData,
   CustomerRow,
@@ -27,10 +18,10 @@ import type {
   OrderEventsData,
   OrderFulfilmentData,
   OrderRow,
-  OrderShippingData,
   ProductRow,
-  SalesPageData,
 } from "../models/schema";
+import * as checkoutService from "./checkout.service";
+import * as shippingQuoteService from "./shippingQuote.service";
 import { formatKlDateTime, klNow } from "./time";
 import { entityUuid, ID_PREFIX } from "./uuid";
 
@@ -56,63 +47,26 @@ function priceOf(row: ProductRow): number {
   return data.discountPrice ?? data.price;
 }
 
-/** Unsaleable product: gone, or the merchant moved it to draft since the save. */
-function itemUnavailable(): never {
-  throw validationFailed("Check the highlighted fields", {
-    items: "One of these products is no longer available — refresh the page",
-  });
-}
-
 function shippingDetailsMissing(): never {
   throw validationFailed("Check the highlighted fields", {
     address: "We need a delivery address for items that ship",
   });
 }
 
-interface ResolvedShipping {
-  priceCents: number;
-  /** Absent for the legacy flat rate (no zones configured). */
-  method?: OrderShippingData;
-}
-
-/**
- * The buyer pays the rate for the most specific matching zone. With no
- * priceable (flat) rate at all, the legacy flat keeps an unconfigured store
- * selling; once one exists, an uncovered destination is refused instead of
- * guessed.
- */
-async function resolveShipping(
-  env: Env,
-  customer: { country?: string; state?: string },
-): Promise<ResolvedShipping> {
-  const rows = await shippingZonesModel.listActiveShippingZones(env);
-  const quotes = rows.map((row) => ({
-    zoneKey: row.zoneKey,
-    courierKey: row.courierKey as ShippingCourierKey,
-    priceType: row.data.priceType,
-    priceCents: row.data.priceCents,
-  }));
-  // No usable (flat) rate at all: keep the legacy flat so a store that has not
-  // finished configuring zones is not locked out of checkout.
-  if (!hasPriceableShippingRates(quotes)) return { priceCents: ORDER_SHIPPING_CENTS };
-  const country = (customer.country ?? "").toUpperCase();
-  const rate = pickShippingRate(quotes, shippingZoneCandidates(country, customer.state ?? ""));
-  if (!rate || rate.priceCents == null) {
-    throw validationFailed(
-      "Check the highlighted fields",
-      country === "MY"
-        ? { state: "We don't have a shipping rate for this address yet" }
-        : { country: "We don't have a shipping rate for this country yet" },
-    );
-  }
-  return {
-    priceCents: rate.priceCents,
-    method: {
-      zoneKey: rate.zoneKey,
-      courierKey: rate.courierKey,
-      priceCents: rate.priceCents,
-    },
-  };
+/** Turn a refused quote into the form-shaped 422 the checkout already shows. */
+function quoteUnavailable(quote: ShippingQuote, country: string): never {
+  const message = quote.message ?? "Shipping is unavailable for this address";
+  const fields: Record<string, string> =
+    quote.reason === "weight_missing" || quote.reason === "too_heavy"
+      ? { items: message }
+      : quote.reason === "destination_incomplete"
+        ? { postcode: message }
+        : quote.reason === "no_rate"
+          ? country === "MY"
+            ? { state: message }
+            : { country: message }
+          : { shipping: message };
+  throw validationFailed(message, fields);
 }
 
 /**
@@ -122,35 +76,25 @@ async function resolveShipping(
  * items through someone's landing page), and totals are the server's.
  */
 export async function create(env: Env, input: CreateOrderInput): Promise<Order> {
-  const pageRow = await salespagesModel.findSalesPageBySlug(env, input.slug);
-  // A paused or unknown page is the same dead end to a buyer — one answer.
-  if (!pageRow || pageRow.status !== "open") {
-    throw notFound("page_not_found", "This page isn't taking orders right now");
-  }
-  const pageData = pageRow.data as SalesPageData;
-  const sold = new Set(pageData.checkoutProducts ?? []);
-
-  // Resolve the cart against the catalogue: on the page's list, still active.
-  const priced: PricedProduct[] = [];
-  for (const line of input.items) {
-    if (!sold.has(line.product)) itemUnavailable();
-    const row = await productsModel.findProductByUuid(env, line.product);
-    if (!row || row.data.status !== "active") itemUnavailable();
-    priced.push({
-      uuid: row.uuid,
-      name: row.name,
-      unitCents: priceOf(row),
-      ships: (row.data.fulfilment ?? { shipment: true }).shipment === true,
-      image: row.data.featured ?? null,
-    });
-  }
+  const { pageRow, lines: quoteLines } = await checkoutService.resolveCheckout(
+    env,
+    input.slug,
+    input.items,
+  );
 
   // The server's arithmetic — the only numbers stored and returned.
+  const priced: PricedProduct[] = quoteLines.map(({ row }) => ({
+    uuid: row.uuid,
+    name: row.name,
+    unitCents: priceOf(row),
+    ships: (row.data.fulfilment ?? { shipment: true }).shipment === true,
+    image: row.data.featured ?? null,
+  }));
   const items: OrderItem[] = priced.map((product, index) => ({
     product: product.uuid,
     name: product.name,
     unitCents: product.unitCents,
-    qty: input.items[index]?.qty ?? 1,
+    qty: quoteLines[index]?.qty ?? 1,
     image: product.image,
   }));
   const subtotalCents = items.reduce((sum, item) => sum + item.unitCents * item.qty, 0);
@@ -170,8 +114,21 @@ export async function create(env: Env, input: CreateOrderInput): Promise<Order> 
     }
   }
 
-  const shipping = ships ? await resolveShipping(env, input.customer) : null;
-  const shippingCents = shipping?.priceCents ?? 0;
+  let shipping: ShippingQuote | null = null;
+  if (ships) {
+    shipping = await shippingQuoteService.quoteShipping(env, {
+      lines: quoteLines,
+      destination: {
+        country: input.customer.country ?? "",
+        state: input.customer.state,
+        postcode: input.customer.postcode,
+      },
+    });
+    if (!shipping.available) {
+      quoteUnavailable(shipping, (input.customer.country ?? "").toUpperCase());
+    }
+  }
+  const shippingCents = shipping?.shippingCents ?? 0;
   const totalCents = subtotalCents + shippingCents;
 
   // The buyer's copy of the total disagreed with ours: the prices moved
@@ -216,7 +173,17 @@ export async function create(env: Env, input: CreateOrderInput): Promise<Order> 
     shippingCents,
     totalCents,
     requiresShipping: ships,
-    ...(shipping?.method ? { shipping: shipping.method } : {}),
+    ...(shipping?.source === "zone" && shipping.zoneKey && shipping.courierKey
+      ? {
+          shipping: {
+            zoneKey: shipping.zoneKey,
+            courierKey: shipping.courierKey,
+            priceCents: shipping.shippingCents,
+            priceType: shipping.priceType ?? "flat",
+            provider: shipping.provider,
+          },
+        }
+      : {}),
     createdAt: now,
     updatedAt: now,
     ...(digitalOnly ? { fulfilment: { status: "fulfilled", fulfilledAt: now } } : {}),

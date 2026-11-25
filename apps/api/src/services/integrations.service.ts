@@ -92,6 +92,10 @@ export async function create(env: Env, input: CreateInput): Promise<IntegrationD
     }
   }
 
+  if (provider.id === "myparcel-asia" && !/^\d{5}$/.test(settings.senderPostcode ?? "")) {
+    issues["fields.senderPostcode"] = "Enter a 5-digit sender postcode.";
+  }
+
   if (Object.keys(issues).length > 0) {
     throw validationFailed("Check the highlighted fields", issues);
   }
@@ -217,6 +221,9 @@ export async function update(
         data.secrets[key] = await encryptSecret(env, fieldAad(row.uuid, key), value);
         data.hints[key] = secretHint(value);
       }
+    }
+    if (row.provider === "myparcel-asia" && !/^\d{5}$/.test(data.settings.senderPostcode ?? "")) {
+      issues["fields.senderPostcode"] = "Enter a 5-digit sender postcode.";
     }
     if (Object.keys(issues).length > 0) {
       throw validationFailed("Check the highlighted fields", issues);

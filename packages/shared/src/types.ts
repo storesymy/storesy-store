@@ -78,6 +78,33 @@ export interface PublicShippingRates {
   rates: PublicShippingRate[];
   /** Charged only when `rates` is empty (no zones configured yet). */
   fallbackCents: number;
+  /** True when at least one active row needs a live MyParcel Asia quote. */
+  requiresQuote: boolean;
+  /** Short labels for the cart's `Shipping (J&T)` line. */
+  couriers: { key: ShippingCourierKey; label: string }[];
+}
+
+/** Why a quote could not be produced; each maps to buyer-safe copy. */
+export type ShippingQuoteReason =
+  | "destination_incomplete"
+  | "no_rate"
+  | "provider_unavailable"
+  | "weight_missing"
+  | "too_heavy";
+
+/** The server's answer for one cart + destination. Money is always in cents. */
+export interface ShippingQuote {
+  available: boolean;
+  /** `zone` = a configured rate; `fallback` = the legacy flat (no zones yet). */
+  source: "zone" | "fallback" | null;
+  shippingCents: number;
+  zoneKey: string | null;
+  courierKey: ShippingCourierKey | null;
+  priceType: ShippingPriceType | null;
+  provider: "myparcel-asia" | null;
+  reason?: ShippingQuoteReason;
+  /** Buyer-safe explanation when `available` is false. */
+  message?: string;
 }
 
 /** A product as the API returns it — money in cents, dates as KL text. */
@@ -499,6 +526,7 @@ export const routes = {
   products: `${API_BASE}/products`,
   shippingZones: `${API_BASE}/shipping-zones`,
   publicShippingRates: `${API_BASE}/public/shipping-rates`,
+  publicShippingQuote: `${API_BASE}/public/shipping-quote`,
   salesPages: `${API_BASE}/salespages`,
   orders: `${API_BASE}/orders`,
   customers: `${API_BASE}/customers`,
