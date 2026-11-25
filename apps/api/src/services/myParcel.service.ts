@@ -40,9 +40,27 @@ const MPA_TIMEOUT_MS = 20_000;
 const QUOTE_CACHE_TTL_SECONDS = 300;
 
 export interface MpaCredentials {
+  /** `integrations.id` — the account this quote came from. */
+  integrationId: number;
   host: string;
   apiKey: string;
   senderPostcode: string;
+}
+
+/** One courier/service quote from `check_price`. */
+export interface MpaRate {
+  providerCode: string;
+  providerLabel: string;
+  priceCents: number;
+  transitTime?: string;
+  sendMethods?: string[];
+  sendDates?: string[];
+}
+
+/** The chosen account + its cheapest service per provider. */
+export interface MpaQuoteResult {
+  integrationId: number;
+  rates: Map<string, MpaRate>;
 }
 
 /** The connected MPA account, or null when setup is incomplete. */
@@ -58,7 +76,7 @@ export async function mpaCredentials(env: Env): Promise<MpaCredentials | null> {
 
   try {
     const apiKey = await decryptSecret(env, fieldAad(row.uuid, "apiKey"), envelope);
-    return apiKey ? { host, apiKey, senderPostcode } : null;
+    return apiKey ? { integrationId: row.id, host, apiKey, senderPostcode } : null;
   } catch {
     return null;
   }
@@ -99,7 +117,7 @@ function priceToCents(value: unknown): number | null {
  * response can arrive with rates as an array or a keyed object; both are
  * accepted. Exclusive topup accounts use `exclusive_price`.
  */
-export function parseMpaRates(body: unknown): Map<string, number> {
+export function parseMpaRates(body: unknown): Map<string, MpaRate> {
   const root = (body ?? {}) as {
     data?: { rates?: unknown };
     topup?: unknown;
@@ -119,7 +137,7 @@ export function parseMpaRates(body: unknown): Map<string, number> {
       : [];
   const exclusive = String(root.topup ?? "").toLowerCase() === "exclusive";
 
-  const prices = new Map<string, number>();
+  const prices = new Map<string, MpaRate>();
   for (const entry of rates) {
     if (!entry || typeof entry !== "object") continue;
     const rate = entry as Record<string, unknown>;
@@ -131,7 +149,23 @@ export function parseMpaRates(body: unknown): Map<string, number> {
     const cents = priceToCents(chosen);
     if (cents === null) continue;
     const current = prices.get(code);
-    if (current === undefined || cents < current) prices.set(code, cents);
+    if (current !== undefined && current.priceCents <= cents) continue;
+    const methods = Array.isArray(rate.send_methods)
+      ? rate.send_methods.filter((value): value is string => typeof value === "string")
+      : undefined;
+    const dates = Array.isArray(rate.send_dates)
+      ? rate.send_dates.filter((value): value is string => typeof value === "string")
+      : undefined;
+    prices.set(code, {
+      providerCode: code,
+      providerLabel: String(rate.provider_label ?? code),
+      priceCents: cents,
+      ...(typeof rate.transit_time === "string" && rate.transit_time
+        ? { transitTime: rate.transit_time }
+        : {}),
+      ...(methods && methods.length > 0 ? { sendMethods: methods } : {}),
+      ...(dates && dates.length > 0 ? { sendDates: dates } : {}),
+    });
   }
 
   if (prices.size === 0) {
@@ -144,16 +178,26 @@ export function parseMpaRates(body: unknown): Map<string, number> {
 }
 
 function cacheKey(credentials: MpaCredentials, receiverPostcode: string, weightKg: number) {
-  return `mpa:quote:v1:${credentials.host}:${credentials.senderPostcode}:${receiverPostcode}:${weightKg.toFixed(2)}`;
+  return `mpa:quote:v2:${credentials.integrationId}:${credentials.host}:${credentials.senderPostcode}:${receiverPostcode}:${weightKg.toFixed(2)}`;
 }
 
-async function readCache(env: Env, key: string): Promise<Map<string, number> | null> {
+async function readCache(env: Env, key: string): Promise<Map<string, MpaRate> | null> {
   try {
     const raw = await env.KV.get(key, "json");
     if (!raw || typeof raw !== "object") return null;
-    const prices = new Map<string, number>();
-    for (const [code, cents] of Object.entries(raw as Record<string, unknown>)) {
-      if (typeof cents === "number" && Number.isFinite(cents)) prices.set(code, cents);
+    const prices = new Map<string, MpaRate>();
+    for (const [code, value] of Object.entries(raw as Record<string, unknown>)) {
+      if (!value || typeof value !== "object") continue;
+      const rate = value as Partial<MpaRate>;
+      if (typeof rate.priceCents !== "number" || !Number.isFinite(rate.priceCents)) continue;
+      prices.set(code, {
+        providerCode: typeof rate.providerCode === "string" ? rate.providerCode : code,
+        providerLabel: typeof rate.providerLabel === "string" ? rate.providerLabel : code,
+        priceCents: rate.priceCents,
+        ...(typeof rate.transitTime === "string" ? { transitTime: rate.transitTime } : {}),
+        ...(Array.isArray(rate.sendMethods) ? { sendMethods: rate.sendMethods } : {}),
+        ...(Array.isArray(rate.sendDates) ? { sendDates: rate.sendDates } : {}),
+      });
     }
     return prices.size > 0 ? prices : null;
   } catch {
@@ -161,7 +205,7 @@ async function readCache(env: Env, key: string): Promise<Map<string, number> | n
   }
 }
 
-async function writeCache(env: Env, key: string, prices: Map<string, number>): Promise<void> {
+async function writeCache(env: Env, key: string, prices: Map<string, MpaRate>): Promise<void> {
   try {
     await env.KV.put(key, JSON.stringify(Object.fromEntries(prices)), {
       expirationTtl: QUOTE_CACHE_TTL_SECONDS,
@@ -180,7 +224,7 @@ export async function quoteForCredentials(
   credentials: MpaCredentials,
   input: { receiverPostcode: string; weightKg: number },
   options: { fetchImpl?: MpaFetch; skipCache?: boolean } = {},
-): Promise<Map<string, number>> {
+): Promise<MpaQuoteResult> {
   const receiverPostcode = input.receiverPostcode.trim();
   if (!/^\d{5}$/.test(receiverPostcode)) {
     throw new MyParcelError("invalid_response", "A 5-digit destination postcode is required");
@@ -192,7 +236,7 @@ export async function quoteForCredentials(
   const key = cacheKey(credentials, receiverPostcode, input.weightKg);
   if (!options.skipCache) {
     const cached = await readCache(env, key);
-    if (cached) return cached;
+    if (cached) return { integrationId: credentials.integrationId, rates: cached };
   }
 
   const doFetch = options.fetchImpl ?? fetch;
@@ -237,7 +281,7 @@ export async function quoteForCredentials(
 
   const prices = parseMpaRates(body);
   if (!options.skipCache) await writeCache(env, key, prices);
-  return prices;
+  return { integrationId: credentials.integrationId, rates: prices };
 }
 
 /**
@@ -249,7 +293,7 @@ export async function quoteRates(
   env: Env,
   input: { receiverPostcode: string; weightKg: number },
   options: { fetchImpl?: MpaFetch; skipCache?: boolean } = {},
-): Promise<Map<string, number>> {
+): Promise<MpaQuoteResult> {
   const credentials = await mpaCredentials(env);
   if (!credentials) {
     throw new MyParcelError(
@@ -311,12 +355,13 @@ export async function verifyIntegration(
   }
 
   try {
-    const rates = await quoteForCredentials(
+    const result = await quoteForCredentials(
       env,
-      { host, apiKey, senderPostcode },
+      { integrationId: row.id, host, apiKey, senderPostcode },
       { receiverPostcode: "50000", weightKg: 1 },
       { skipCache: true },
     );
+    const rates = result.rates;
     return {
       ok: true,
       code: "ready",

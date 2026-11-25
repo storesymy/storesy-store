@@ -3,9 +3,16 @@ import type {
   Order,
   OrderFulfilmentStatus,
   OrderItem,
+  ShippingCourierKey,
+  ShippingPriceType,
   ShippingQuote,
 } from "@storesy/shared";
-import { countryByCode, formatCustomerNo, formatOrderNo } from "@storesy/shared";
+import {
+  countryByCode,
+  courierShortLabel,
+  formatCustomerNo,
+  formatOrderNo,
+} from "@storesy/shared";
 import { conflict, notFound, validationFailed } from "../core/errors";
 import * as customersModel from "../models/customers.repository";
 import * as ordersModel from "../models/orders.repository";
@@ -22,6 +29,7 @@ import type {
 } from "../models/schema";
 import * as checkoutService from "./checkout.service";
 import * as shippingQuoteService from "./shippingQuote.service";
+import type { ResolvedShippingQuote } from "./shippingQuote.service";
 import { formatKlDateTime, klNow } from "./time";
 import { entityUuid, ID_PREFIX } from "./uuid";
 
@@ -114,7 +122,7 @@ export async function create(env: Env, input: CreateOrderInput): Promise<Order> 
     }
   }
 
-  let shipping: ShippingQuote | null = null;
+  let shipping: ResolvedShippingQuote | null = null;
   if (ships) {
     shipping = await shippingQuoteService.quoteShipping(env, {
       lines: quoteLines,
@@ -173,17 +181,7 @@ export async function create(env: Env, input: CreateOrderInput): Promise<Order> 
     shippingCents,
     totalCents,
     requiresShipping: ships,
-    ...(shipping?.source === "zone" && shipping.zoneKey && shipping.courierKey
-      ? {
-          shipping: {
-            zoneKey: shipping.zoneKey,
-            courierKey: shipping.courierKey,
-            priceCents: shipping.shippingCents,
-            priceType: shipping.priceType ?? "flat",
-            provider: shipping.provider,
-          },
-        }
-      : {}),
+    ...(shipping?.snapshot ? { shipping: shipping.snapshot } : {}),
     createdAt: now,
     updatedAt: now,
     ...(digitalOnly ? { fulfilment: { status: "fulfilled", fulfilledAt: now } } : {}),
@@ -253,6 +251,19 @@ export function toPublic(
     totalCents: data.totalCents,
     // Older rows predate the flag; their amount is the only evidence.
     requiresShipping: data.requiresShipping ?? data.shippingCents > 0,
+    shipping: data.shipping
+      ? {
+          zoneKey: data.shipping.zoneKey,
+          courierKey: data.shipping.courierKey as ShippingCourierKey,
+          courierLabel: courierShortLabel(data.shipping.courierKey),
+          priceType: (data.shipping.priceType ?? "flat") as ShippingPriceType,
+          priceCents: data.shipping.priceCents,
+          provider: data.shipping.provider ?? null,
+          ...(data.shipping.providerLabel ? { providerLabel: data.shipping.providerLabel } : {}),
+          ...(data.shipping.transitTime ? { transitTime: data.shipping.transitTime } : {}),
+          ...(data.shipping.parcel ? { parcel: data.shipping.parcel } : {}),
+        }
+      : null,
     paidAt: data.payment?.paidAt ?? (row.status === "paid" ? data.updatedAt : null),
     payment: data.payment
       ? {

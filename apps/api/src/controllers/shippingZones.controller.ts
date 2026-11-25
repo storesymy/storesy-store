@@ -34,7 +34,13 @@ export async function quote(ctx: Context): Promise<Response> {
   );
   const input = await ctx.body(shippingQuoteSchema);
   const { lines } = await checkout.resolveCheckout(ctx.env, input.slug, input.items);
-  return ctx.json(await quotes.quoteShipping(ctx.env, { lines, destination: input.destination }));
+  const { snapshot, ...quote } = await quotes.quoteShipping(ctx.env, {
+    lines,
+    destination: input.destination,
+  });
+  // The snapshot is internal order state; the cart only needs the public quote.
+  void snapshot;
+  return ctx.json(quote);
 }
 
 export async function list(ctx: Context): Promise<Response> {

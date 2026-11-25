@@ -94,6 +94,23 @@ beforeAll(async () => {
   });
 });
 
+const mpa = (prices: Record<string, number>) => ({
+  integrationId: 7,
+  rates: new Map(
+    Object.entries(prices).map(([code, cents]) => [
+      code,
+      {
+        providerCode: code,
+        providerLabel: code === "jnt" ? "J&T Express" : code,
+        priceCents: cents,
+        transitTime: "1-5 days",
+        sendMethods: ["pickup", "dropoff"],
+        sendDates: ["2026-11-26"],
+      },
+    ]),
+  ),
+});
+
 describe("checkout shipping quotes", () => {
   it("uses a stored flat rate", async () => {
     await addZone({ zoneKey: "my-selangor", courierKey: "jnt", priceCents: 500 });
@@ -109,6 +126,14 @@ describe("checkout shipping quotes", () => {
       courierKey: "jnt",
       priceType: "flat",
       provider: null,
+      snapshot: {
+        shippingZoneId: expect.any(Number),
+        zoneKey: "my-selangor",
+        courierKey: "jnt",
+        priceType: "flat",
+        provider: null,
+        priceCents: 500,
+      },
     });
   });
 
@@ -120,7 +145,7 @@ describe("checkout shipping quotes", () => {
         lines: [await line(standardId)],
         destination: { country: "MY", state: "Johor", postcode: "80000" },
       },
-      { mpaQuote: async () => new Map([["jnt", 800]]) },
+      { mpaQuote: async () => mpa({ jnt: 800 }) },
     );
     expect(result).toMatchObject({
       available: true,
@@ -128,6 +153,28 @@ describe("checkout shipping quotes", () => {
       priceType: "api",
       provider: "myparcel-asia",
       courierKey: "jnt",
+      snapshot: {
+        shippingZoneId: expect.any(Number),
+        zoneKey: "my-johor",
+        courierKey: "jnt",
+        priceType: "api",
+        provider: "myparcel-asia",
+        integrationId: 7,
+        providerCode: "jnt",
+        providerLabel: "J&T Express",
+        quotedCents: 800,
+        priceCents: 800,
+        transitTime: "1-5 days",
+        sendMethods: ["pickup", "dropoff"],
+        sendDates: ["2026-11-26"],
+        parcel: {
+          weightKg: 1.2,
+          lengthCm: 30,
+          widthCm: 20,
+          heightCm: 10,
+        },
+        quotedAt: expect.any(String),
+      },
     });
   });
 
@@ -139,10 +186,15 @@ describe("checkout shipping quotes", () => {
         lines: [await line(standardId)],
         destination: { country: "MY", state: "Kedah", postcode: "05000" },
       },
-      { mpaQuote: async () => new Map([["ninjavan", 900]]) },
+      { mpaQuote: async () => mpa({ ninjavan: 900 }) },
     );
     expect(result.shippingCents).toBe(1200);
     expect(result.priceType).toBe("markup");
+    expect(result.snapshot).toMatchObject({
+      quotedCents: 900,
+      priceCents: 1200,
+      integrationId: 7,
+    });
   });
 
   it("charges the cheapest of a flat and a live quote in one zone", async () => {
@@ -154,7 +206,7 @@ describe("checkout shipping quotes", () => {
         lines: [await line(standardId)],
         destination: { country: "MY", state: "Perak", postcode: "30000" },
       },
-      { mpaQuote: async () => new Map([["poslaju", 600]]) },
+      { mpaQuote: async () => mpa({ poslaju: 600 }) },
     );
     expect(result.shippingCents).toBe(600);
     expect(result.courierKey).toBe("poslaju");
@@ -208,7 +260,7 @@ describe("checkout shipping quotes", () => {
         lines: [await line(lightId)],
         destination: { country: "MY", state: "Terengganu", postcode: "20000" },
       },
-      { mpaQuote: async () => new Map([["jnt", 500]]) },
+      { mpaQuote: async () => mpa({ jnt: 500 }) },
     );
     expect(result.available).toBe(false);
     expect(result.reason).toBe("weight_missing");
@@ -222,7 +274,7 @@ describe("checkout shipping quotes", () => {
         lines: [await line(heavyId)],
         destination: { country: "MY", state: "Kelantan", postcode: "15000" },
       },
-      { mpaQuote: async () => new Map([["jnt", 500]]) },
+      { mpaQuote: async () => mpa({ jnt: 500 }) },
     );
     expect(result.available).toBe(false);
     expect(result.reason).toBe("too_heavy");
@@ -240,7 +292,7 @@ describe("checkout shipping quotes", () => {
       {
         mpaQuote: async () => {
           called = true;
-          return new Map();
+          return mpa({});
         },
       },
     );
@@ -276,7 +328,11 @@ describe("parcel weight", () => {
   it("uses the greater of actual and volumetric weight per unit", async () => {
     // 20×10×30 / 5000 = 1.2 kg, which beats the 1 kg actual.
     const result = computeParcel([await line(standardId, 2)]);
-    expect(result).toEqual({ ok: true, weightKg: 2.4 });
+    expect(result).toEqual({
+      ok: true,
+      weightKg: 2.4,
+      dimensions: { lengthCm: 30, widthCm: 20, heightCm: 10 },
+    });
   });
 
   it("blocks when neither weight nor dimensions exist", async () => {

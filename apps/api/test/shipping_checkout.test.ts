@@ -114,6 +114,14 @@ interface OrderBody {
     shippingCents: number;
     totalCents: number;
     requiresShipping: boolean;
+    shipping: {
+      zoneKey: string;
+      courierKey: string;
+      courierLabel: string;
+      priceType: string;
+      priceCents: number;
+      provider: string | null;
+    } | null;
     fulfilment: { status: string };
   };
 }
@@ -160,6 +168,7 @@ describe("checkout shipping zones", () => {
     expect(order.shippingCents).toBe(1000);
     expect(order.totalCents).toBe(2000);
     expect(order.requiresShipping).toBe(true);
+    expect(order.shipping).toBeNull();
   });
 
   it("refuses API-only zones when MyParcel Asia is not configured", async () => {
@@ -187,6 +196,14 @@ describe("checkout shipping zones", () => {
       await submit([{ product: physicalId, qty: 1 }], CUSTOMER, 1500),
     );
     expect(selangor.shippingCents).toBe(500);
+    expect(selangor.shipping).toMatchObject({
+      zoneKey: "my-selangor",
+      courierKey: "jnt",
+      courierLabel: "J&T",
+      priceType: "flat",
+      priceCents: 500,
+      provider: null,
+    });
 
     const kedah = await placed(
       await submit(
@@ -282,6 +299,14 @@ describe("checkout shipping zones", () => {
     );
     expect(order.shippingCents).toBe(0);
     expect(order.requiresShipping).toBe(true);
+    expect(order.shipping).toMatchObject({
+      zoneKey: "my-labuan",
+      courierKey: "jnt",
+      courierLabel: "J&T",
+      priceType: "flat",
+      priceCents: 0,
+      provider: null,
+    });
     expect(order.fulfilment.status).toBe("unfulfilled");
   });
 
@@ -295,6 +320,7 @@ describe("checkout shipping zones", () => {
     );
     expect(order.shippingCents).toBe(0);
     expect(order.requiresShipping).toBe(false);
+    expect(order.shipping).toBeNull();
     expect(order.fulfilment.status).toBe("fulfilled");
   });
 
@@ -303,13 +329,14 @@ describe("checkout shipping zones", () => {
       await submit([{ product: physicalId, qty: 1 }], CUSTOMER, 1500),
     );
     const data = await orderData(order.id);
-    expect(data.shipping).toEqual({
+    expect(data.shipping).toMatchObject({
       zoneKey: "my-selangor",
       courierKey: "jnt",
       priceCents: 500,
       priceType: "flat",
       provider: null,
     });
+    expect(typeof (data.shipping as { shippingZoneId?: unknown }).shippingZoneId).toBe("number");
     expect(data.requiresShipping).toBe(true);
   });
 });

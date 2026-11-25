@@ -24,6 +24,21 @@ const PAYMENT_LABEL: Record<string, string> = {
   cancelled: "Cancelled",
 };
 
+/** `0.2 kg · 1×25×25 cm` from the order's parcel snapshot. */
+function parcelLabel(parcel: {
+  weightKg: number;
+  lengthCm: number | null;
+  widthCm: number | null;
+  heightCm: number | null;
+}): string {
+  const dims = [parcel.lengthCm, parcel.widthCm, parcel.heightCm];
+  const size =
+    dims.every((dimension) => dimension != null)
+      ? ` · ${dims[0]}×${dims[1]}×${dims[2]} cm`
+      : "";
+  return `${parcel.weightKg} kg${size}`;
+}
+
 /** Semantic pill for the order's payment state. */
 function paymentPill(status: string): string {
   return ["paid", "pending", "failed", "cancelled"].includes(status)
@@ -235,10 +250,38 @@ export function OrderDetailPage() {
                 <dt>Method</dt>
                 <dd>
                   {order.requiresShipping
-                    ? `Shipping · ${formatPrice(order.shippingCents)}`
+                    ? `Shipping${
+                        order.shipping?.courierLabel
+                          ? ` · ${order.shipping.courierLabel}`
+                          : ""
+                      } · ${formatPrice(order.shippingCents)}`
                     : "Digital delivery"}
                 </dd>
               </div>
+              {order.shipping?.provider === "myparcel-asia" ? (
+                <div className="od__row">
+                  <dt>Provider</dt>
+                  <dd>MyParcel Asia</dd>
+                </div>
+              ) : null}
+              {order.shipping?.providerLabel ? (
+                <div className="od__row">
+                  <dt>Service</dt>
+                  <dd>{order.shipping.providerLabel}</dd>
+                </div>
+              ) : null}
+              {order.shipping?.transitTime ? (
+                <div className="od__row">
+                  <dt>Transit</dt>
+                  <dd>{order.shipping.transitTime}</dd>
+                </div>
+              ) : null}
+              {order.shipping?.parcel ? (
+                <div className="od__row">
+                  <dt>Parcel</dt>
+                  <dd>{parcelLabel(order.shipping.parcel)}</dd>
+                </div>
+              ) : null}
               <div className="od__row">
                 <dt>Fulfilled</dt>
                 <dd>{fullTime(order.fulfilment.fulfilledAt)}</dd>

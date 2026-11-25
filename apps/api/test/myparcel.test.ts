@@ -48,9 +48,12 @@ function fixture(overrides: Record<string, unknown> = {}): unknown {
         },
         {
           provider_code: "jnt",
-          provider_label: "J&T Express (Express)",
+          provider_label: "J&T Express",
           normal_price: "7.20",
           exclusive_price: "6.80",
+          transit_time: "1-5 days",
+          send_methods: ["pickup", "dropoff"],
+          send_dates: ["2026-11-26", "2026-11-27"],
         },
       ],
     },
@@ -75,14 +78,21 @@ describe("MyParcel Asia rate parsing", () => {
 
   it("keeps the cheapest service per provider in normal mode", () => {
     const prices = parseMpaRates(fixture());
-    expect(prices.get("jnt")).toBe(720);
-    expect(prices.get("poslaju")).toBe(920);
+    expect(prices.get("jnt")).toMatchObject({
+      priceCents: 720,
+      providerCode: "jnt",
+      providerLabel: "J&T Express",
+      transitTime: "1-5 days",
+      sendMethods: ["pickup", "dropoff"],
+      sendDates: ["2026-11-26", "2026-11-27"],
+    });
+    expect(prices.get("poslaju")?.priceCents).toBe(920);
   });
 
   it("uses exclusive prices for an exclusive topup account", () => {
     const prices = parseMpaRates(fixture({ topup: "exclusive" }));
-    expect(prices.get("jnt")).toBe(680);
-    expect(prices.get("poslaju")).toBe(860);
+    expect(prices.get("jnt")?.priceCents).toBe(680);
+    expect(prices.get("poslaju")?.priceCents).toBe(860);
   });
 
   it("accepts rates keyed by provider instead of an array", () => {
@@ -96,8 +106,8 @@ describe("MyParcel Asia rate parsing", () => {
       topup: "normal",
       meta: { currency_code: "MYR" },
     });
-    expect(prices.get("jnt")).toBe(600);
-    expect(prices.get("ninjavan")).toBe(740);
+    expect(prices.get("jnt")?.priceCents).toBe(600);
+    expect(prices.get("ninjavan")?.priceCents).toBe(740);
   });
 
   it("rejects non-MYR and empty rate responses", () => {
@@ -128,7 +138,7 @@ describe("MyParcel Asia request", () => {
 
     let seenUrl = "";
     let seenInit: RequestInit | undefined;
-    const prices = await quoteRates(
+    const result = await quoteRates(
       env,
       { receiverPostcode: "88000", weightKg: 1.25 },
       {
@@ -154,7 +164,10 @@ describe("MyParcel Asia request", () => {
       declared_weight: 1.25,
     });
     expect(JSON.stringify(body)).not.toContain("mpa_test_secret");
-    expect(prices.get("jnt")).toBe(720);
+    expect(typeof result.integrationId).toBe("number");
+    expect(result.integrationId).toBeGreaterThan(0);
+    expect(result.rates.get("jnt")?.priceCents).toBe(720);
+    expect(result.rates.get("jnt")?.providerLabel).toBe("J&T Express");
   });
 
   it("serves a second identical quote from KV without calling MPA", async () => {
@@ -169,7 +182,8 @@ describe("MyParcel Asia request", () => {
           }),
       },
     );
-    expect(first.get("jnt")).toBe(720);
+    expect(first.rates.get("jnt")?.priceCents).toBe(720);
+    expect(first.rates.get("jnt")?.transitTime).toBe("1-5 days");
 
     const second = await quoteRates(
       env,
@@ -180,7 +194,7 @@ describe("MyParcel Asia request", () => {
         },
       },
     );
-    expect(second.get("jnt")).toBe(720);
+    expect(second.rates.get("jnt")?.priceCents).toBe(720);
   });
 
   it("maps a provider failure to a typed error", async () => {

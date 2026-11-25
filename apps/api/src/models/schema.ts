@@ -247,6 +247,8 @@ export interface OrderEventsData {
 
 /** The chosen delivery rate, snapshotted so a later edit cannot rewrite history. */
 export interface OrderShippingData {
+  /** `shipping_zones.id` of the selected row (internal; not exposed publicly). */
+  shippingZoneId?: number;
   zoneKey: string;
   courierKey: string;
   priceCents: number;
@@ -254,6 +256,26 @@ export interface OrderShippingData {
   priceType?: "flat" | "api" | "markup";
   /** Live-rate provider, or null for a stored flat amount. */
   provider?: "myparcel-asia" | null;
+  /** `integrations.id` of the MPA account used for the quote (internal). */
+  integrationId?: number;
+  /** MyParcel Asia's provider code/label for the selected service. */
+  providerCode?: string;
+  providerLabel?: string;
+  /** Base MPA quote before any markup (cents). */
+  quotedCents?: number;
+  /** Service metadata returned by check_price. */
+  transitTime?: string;
+  sendMethods?: string[];
+  sendDates?: string[];
+  /** Parcel used for the quote. */
+  parcel?: {
+    weightKg: number;
+    lengthCm: number | null;
+    widthCm: number | null;
+    heightCm: number | null;
+  };
+  /** Quote time, `YYYY-MM-DD HH:MM:SS` Asia/Kuala_Lumpur. */
+  quotedAt?: string;
 }
 
 export interface OrderData {

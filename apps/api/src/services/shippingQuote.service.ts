@@ -9,9 +9,11 @@ import type {
   ShippingQuoteReason,
   ShippingPriceType,
 } from "@storesy/shared";
-import type { ProductRow, ShippingZoneRow } from "../models/schema";
+import type { OrderShippingData, ProductRow, ShippingZoneRow } from "../models/schema";
 import * as shippingZonesModel from "../models/shippingZones.repository";
 import * as myParcel from "./myParcel.service";
+import type { MpaQuoteResult, MpaRate } from "./myParcel.service";
+import { klNow } from "./time";
 
 /**
  * The one place a cart's delivery price is decided. Flat rows are stored
@@ -34,15 +36,21 @@ export interface QuoteDestination {
 export type MpaQuoteFn = (
   env: Env,
   input: { receiverPostcode: string; weightKg: number },
-) => Promise<Map<string, number>>;
+) => Promise<MpaQuoteResult>;
 
 export interface QuoteDeps {
   /** Test seam: replace the live MPA call with a fixture. */
   mpaQuote?: MpaQuoteFn;
 }
 
+export interface ParcelDimensions {
+  lengthCm: number | null;
+  widthCm: number | null;
+  heightCm: number | null;
+}
+
 export type ParcelResult =
-  | { ok: true; weightKg: number }
+  | { ok: true; weightKg: number; dimensions: ParcelDimensions }
   | { ok: false; reason: "weight_missing" | "too_heavy" };
 
 const MPA_MAX_KG = 30;
@@ -81,6 +89,9 @@ function unavailable(reason: ShippingQuoteReason): ShippingQuote {
 export function computeParcel(lines: QuoteLine[]): ParcelResult {
   let weightKg = 0;
   let shippingUnits = 0;
+  let lengthCm: number | null = null;
+  let widthCm: number | null = null;
+  let heightCm: number | null = null;
 
   for (const line of lines) {
     const data = line.row.data;
@@ -100,22 +111,36 @@ export function computeParcel(lines: QuoteLine[]): ParcelResult {
 
     if (actual === 0 && volumetric === 0) return { ok: false, reason: "weight_missing" };
     weightKg += Math.max(actual, volumetric) * line.qty;
+    if (hasDimensions) {
+      lengthCm = Math.max(lengthCm ?? 0, dims[0]!);
+      widthCm = Math.max(widthCm ?? 0, dims[1]!);
+      heightCm = Math.max(heightCm ?? 0, dims[2]!);
+    }
   }
 
-  if (shippingUnits === 0) return { ok: true, weightKg: 0 };
+  if (shippingUnits === 0) {
+    return { ok: true, weightKg: 0, dimensions: { lengthCm: null, widthCm: null, heightCm: null } };
+  }
   if (!Number.isFinite(weightKg) || weightKg <= 0) {
     return { ok: false, reason: "weight_missing" };
   }
 
   const rounded = Math.max(0.1, Math.round(weightKg * 100) / 100);
   if (rounded > MPA_MAX_KG) return { ok: false, reason: "too_heavy" };
-  return { ok: true, weightKg: rounded };
+  return { ok: true, weightKg: rounded, dimensions: { lengthCm, widthCm, heightCm } };
 }
 
 interface RateCandidate {
   row: ShippingZoneRow;
   amountCents: number;
   provider: "myparcel-asia" | null;
+  mpa?: MpaRate;
+  integrationId?: number;
+}
+
+/** The public quote plus the internal snapshot order creation persists. */
+export interface ResolvedShippingQuote extends ShippingQuote {
+  snapshot?: OrderShippingData;
 }
 
 function cheapest(candidates: RateCandidate[]): RateCandidate {
@@ -145,7 +170,7 @@ export async function quoteShipping(
   env: Env,
   input: { lines: QuoteLine[]; destination: QuoteDestination },
   deps: QuoteDeps = {},
-): Promise<ShippingQuote> {
+): Promise<ResolvedShippingQuote> {
   const ships = input.lines.some(
     (line) => (line.row.data.fulfilment ?? { shipment: true }).shipment === true,
   );
@@ -186,7 +211,7 @@ export async function quoteShipping(
   }
 
   const mpaQuote = deps.mpaQuote ?? myParcel.quoteRates;
-  let mpaPrices: Promise<Map<string, number>> | null = null;
+  let mpaQuoteResult: Promise<MpaQuoteResult> | null = null;
   let parcel: ParcelResult | null = null;
 
   for (const zoneKey of candidates) {
@@ -218,14 +243,14 @@ export async function quoteShipping(
         if (!parcel.ok) {
           if (flats.length === 0) return unavailable(parcel.reason);
         } else {
-          mpaPrices ??= mpaQuote(env, {
+          mpaQuoteResult ??= mpaQuote(env, {
             receiverPostcode: input.destination.postcode ?? "",
             weightKg: parcel.weightKg,
           });
 
-          let prices: Map<string, number> | null = null;
+          let result: MpaQuoteResult | null = null;
           try {
-            prices = await mpaPrices;
+            result = await mpaQuoteResult;
           } catch (error) {
             console.error(
               "myparcel_quote_failed",
@@ -236,15 +261,21 @@ export async function quoteShipping(
             if (flats.length === 0) return unavailable("provider_unavailable");
           }
 
-          if (prices) {
+          if (result) {
             for (const row of apiRows) {
-              const quoted = prices.get(row.courierKey);
-              if (quoted == null) continue;
+              const rate = result.rates.get(row.courierKey);
+              if (!rate) continue;
               const amountCents =
                 row.data.priceType === "markup"
-                  ? quoted + (row.data.priceCents ?? 0)
-                  : quoted;
-              options.push({ row, amountCents, provider: "myparcel-asia" });
+                  ? rate.priceCents + (row.data.priceCents ?? 0)
+                  : rate.priceCents;
+              options.push({
+                row,
+                amountCents,
+                provider: "myparcel-asia",
+                mpa: rate,
+                integrationId: result.integrationId,
+              });
             }
           }
         }
@@ -258,6 +289,36 @@ export async function quoteShipping(
     }
 
     const best = cheapest(options);
+    const snapshot: OrderShippingData = {
+      shippingZoneId: best.row.id,
+      zoneKey: best.row.zoneKey,
+      courierKey: best.row.courierKey,
+      priceType: best.row.data.priceType as ShippingPriceType,
+      provider: best.provider,
+      priceCents: best.amountCents,
+      ...(best.provider === "myparcel-asia" && best.mpa
+        ? {
+            integrationId: best.integrationId,
+            providerCode: best.mpa.providerCode,
+            providerLabel: best.mpa.providerLabel,
+            quotedCents: best.mpa.priceCents,
+            ...(best.mpa.transitTime ? { transitTime: best.mpa.transitTime } : {}),
+            ...(best.mpa.sendMethods ? { sendMethods: best.mpa.sendMethods } : {}),
+            ...(best.mpa.sendDates ? { sendDates: best.mpa.sendDates } : {}),
+            ...(parcel && parcel.ok
+              ? {
+                  parcel: {
+                    weightKg: parcel.weightKg,
+                    lengthCm: parcel.dimensions.lengthCm,
+                    widthCm: parcel.dimensions.widthCm,
+                    heightCm: parcel.dimensions.heightCm,
+                  },
+                }
+              : {}),
+            quotedAt: klNow(),
+          }
+        : {}),
+    };
     return {
       available: true,
       source: "zone",
@@ -266,6 +327,7 @@ export async function quoteShipping(
       courierKey: best.row.courierKey as ShippingCourierKey,
       priceType: best.row.data.priceType as ShippingPriceType,
       provider: best.provider,
+      snapshot,
     };
   }
 

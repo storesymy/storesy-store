@@ -333,6 +333,28 @@ export interface EmailTemplate {
 /** Shipping progress for an order (merchant-controlled). */
 export type OrderFulfilmentStatus = "unfulfilled" | "fulfilled" | "delivered";
 
+/** The shipment method snapshotted at checkout, safe for the merchant UI. */
+export interface OrderShippingDetails {
+  zoneKey: string;
+  courierKey: ShippingCourierKey;
+  /** Short label, e.g. `J&T`. */
+  courierLabel: string;
+  priceType: ShippingPriceType;
+  priceCents: number;
+  provider: "myparcel-asia" | null;
+  /** MPA's service label, e.g. `J&T Express`. */
+  providerLabel?: string;
+  /** MPA's estimate, e.g. `1-5 days`. */
+  transitTime?: string;
+  /** Parcel used for the quote. */
+  parcel?: {
+    weightKg: number;
+    lengthCm: number | null;
+    widthCm: number | null;
+    heightCm: number | null;
+  };
+}
+
 /** An order as the merchant's list receives it. */
 export interface Order {
   /** Public id: prefixed UUIDv7, e.g. `ord-0199f3c2-…` (time-ordered). */
@@ -356,6 +378,8 @@ export interface Order {
   totalCents: number;
   /** The cart held physical goods (true even when a zone charges RM0). */
   requiresShipping: boolean;
+  /** Snapshot of the chosen shipment method; null for digital/legacy orders. */
+  shipping?: OrderShippingDetails | null;
   /** When payment landed (test checkouts use the status-change time). */
   paidAt: string | null;
   /** Gateway details for a checkout that reached one; null for test/never. */

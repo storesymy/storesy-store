@@ -218,6 +218,13 @@ Live rate rules:
 - With no active zones at all, the legacy RM10.00 flat keeps an unconfigured
   store selling; once any zone exists, an uncovered destination is refused.
 
+Each order snapshots the exact shipment method: the selected
+`shipping_zones` row, the MyParcel Asia account row used, the MPA provider
+code/label, quoted vs charged amounts, transit/send metadata, and the parcel
+weight/dimensions. The merchant order page shows the courier, provider,
+service, transit estimate and parcel; the internal row ids stay in the order
+JSON for the later fulfilment/booking step.
+
 Saving or deleting a zone rebuilds every page's stored document so an old page
 cannot keep submitting the previous total.
 
