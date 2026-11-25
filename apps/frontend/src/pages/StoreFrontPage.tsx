@@ -8,7 +8,7 @@ import { CreateStorePanel } from "../components/CreateStorePanel";
 import { LinkEditor } from "../components/LinkEditor";
 import { StorePreview } from "../components/StorePreview";
 import { useAuth } from "../lib/auth";
-import { buildNav, SYSTEM_MENU } from "../lib/nav";
+import { useAppNav, SYSTEM_MENU } from "../lib/nav";
 import { useTheme } from "../lib/theme";
 import { STORE_TYPES } from "../lib/storeTypes";
 import type { CodeFile } from "../lib/useStorefront";
@@ -30,6 +30,7 @@ export function StoreFrontPage() {
   const [loggingOut, setLoggingOut] = useState(false);
   const [theme, toggleTheme] = useTheme();
   const location = useLocation();
+  const nav = useAppNav(location.pathname, user?.role);
   const navigate = useNavigate();
   const studio = useStorefront();
   const [device, setDevice] = useState<"desktop" | "mobile">("desktop");
@@ -203,7 +204,7 @@ export function StoreFrontPage() {
       onThemeToggle={toggleTheme}
       onLogout={handleLogout}
       loggingOut={loggingOut}
-      nav={buildNav(location.pathname, user.role)}
+      nav={nav}
       onNavigate={(href) => navigate(href)}
       menuLinks={user.role === "owner" ? SYSTEM_MENU : undefined}
     >

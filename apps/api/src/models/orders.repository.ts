@@ -7,6 +7,20 @@ function db(env: Env) {
   return drizzle(env.DB);
 }
 
+/**
+ * Paid orders still waiting for fulfilment. Absent `fulfilment` is the old
+ * "unfulfilled" state; digital orders are written as `fulfilled` on creation.
+ */
+export async function countOrdersToProcess(env: Env): Promise<number> {
+  const row = await env.DB.prepare(
+    `SELECT COUNT(*) AS count
+     FROM orders
+     WHERE status = 'paid'
+       AND COALESCE(json_extract(data, '$.fulfilment.status'), 'unfulfilled') = 'unfulfilled'`,
+  ).first<{ count: number }>();
+  return row?.count ?? 0;
+}
+
 /** One order joined with its page and its buyer (for the merchant list). */
 export interface OrderWithPage {
   order: OrderRow;

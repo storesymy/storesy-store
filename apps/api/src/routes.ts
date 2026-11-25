@@ -64,6 +64,8 @@ export function buildRouter(): Router {
     // product. Digital goods never become publicly browsable.
     .get("/api/public/downloads/:order/:product/:index", downloads.serve)
     .get("/api/orders", orders.list)
+    // The sidebar badge: paid orders still to fulfil (cheap count, no joins).
+    .get("/api/orders/summary", orders.summary)
     // One order's detail, and the merchant's fulfilment action.
     .get("/api/orders/:uuid", orders.detail)
     .patch("/api/orders/:uuid/fulfilment", orders.fulfilment)

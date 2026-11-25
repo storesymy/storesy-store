@@ -20,7 +20,7 @@ import type { FormEvent } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { ApiError, api } from "../lib/api";
 import { useAuth } from "../lib/auth";
-import { buildNav } from "../lib/nav";
+import { useAppNav } from "../lib/nav";
 import { formatPrice, priceToCents } from "../lib/product";
 import { refreshSalesPageDocuments } from "../lib/salesPages";
 import { useTheme } from "../lib/theme";
@@ -61,6 +61,7 @@ export function ShippingZonePage() {
   const [loggingOut, setLoggingOut] = useState(false);
   const [theme, toggleTheme] = useTheme();
   const location = useLocation();
+  const nav = useAppNav(location.pathname, user?.role);
   const navigate = useNavigate();
 
   const [zones, setZones] = useState<ShippingZone[]>([]);
@@ -281,7 +282,7 @@ export function ShippingZonePage() {
       onThemeToggle={toggleTheme}
       onLogout={handleLogout}
       loggingOut={loggingOut}
-      nav={buildNav(location.pathname, user.role)}
+      nav={nav}
       onNavigate={(href) => navigate(href)}
     >
       <div className="pd">

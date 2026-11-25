@@ -562,6 +562,7 @@ export const routes = {
   publicShippingQuote: `${API_BASE}/public/shipping-quote`,
   salesPages: `${API_BASE}/salespages`,
   orders: `${API_BASE}/orders`,
+  ordersSummary: `${API_BASE}/orders/summary`,
   customers: `${API_BASE}/customers`,
   templates: `${API_BASE}/templates`,
   integrations: `${API_BASE}/integrations`,

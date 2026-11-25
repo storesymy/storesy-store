@@ -1,5 +1,6 @@
 import { isAdminRole } from "@storesy/shared";
 import type { NavItem } from "@storesy/ui";
+import { useOrdersToProcess } from "./ordersBadge";
 
 /**
  * Single source for the sidebar menu, shared by every page in the shell.
@@ -10,7 +11,11 @@ import type { NavItem } from "@storesy/ui";
  * API stays the hard boundary). Unknown/omitted role keeps the item: the
  * guard that matters is server-side.
  */
-export function buildNav(pathname: string, role?: string): NavItem[] {
+export function buildNav(
+  pathname: string,
+  role?: string,
+  ordersToProcess = 0,
+): NavItem[] {
   const items: NavItem[] = [
     { label: "Dashboard", icon: "dashboard", href: "/home", active: pathname === "/home" },
     { label: "Store Front", icon: "stores", href: "/storefront", active: pathname === "/storefront" },
@@ -26,6 +31,7 @@ export function buildNav(pathname: string, role?: string): NavItem[] {
       icon: "orders",
       href: "/orders",
       active: pathname === "/orders" || pathname.startsWith("/order/"),
+      count: ordersToProcess,
     },
     {
       label: "Shipping Zone",
@@ -56,6 +62,15 @@ export function buildNav(pathname: string, role?: string): NavItem[] {
     active: pathname === "/integrations",
   });
   return items;
+}
+
+/**
+ * `buildNav` plus the live orders badge. Called once per page, before any
+ * conditional return, so the count updates wherever the merchant is.
+ */
+export function useAppNav(pathname: string, role?: string): NavItem[] {
+  const { count } = useOrdersToProcess();
+  return buildNav(pathname, role, count);
 }
 
 /**

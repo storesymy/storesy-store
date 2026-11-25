@@ -6,7 +6,7 @@ import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { ProductSearchSelect } from "../components/ProductSearchSelect";
 import { ApiError, api } from "../lib/api";
 import { useAuth } from "../lib/auth";
-import { buildNav, SYSTEM_MENU } from "../lib/nav";
+import { useAppNav, SYSTEM_MENU } from "../lib/nav";
 import {
   createSalesPage,
   isValidSlug,
@@ -24,6 +24,7 @@ export function SalesPagesPage() {
   const [loggingOut, setLoggingOut] = useState(false);
   const [theme, toggleTheme] = useTheme();
   const location = useLocation();
+  const nav = useAppNav(location.pathname, user?.role);
   const navigate = useNavigate();
 
   const [pages, setPages] = useState<SalesPageSummary[]>([]);
@@ -217,7 +218,7 @@ export function SalesPagesPage() {
       onThemeToggle={toggleTheme}
       onLogout={handleLogout}
       loggingOut={loggingOut}
-      nav={buildNav(location.pathname, user.role)}
+      nav={nav}
       onNavigate={(href) => navigate(href)}
       menuLinks={user.role === "owner" ? SYSTEM_MENU : undefined}
     >

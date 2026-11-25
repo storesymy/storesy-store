@@ -7,7 +7,8 @@ import { Link, Navigate, useLocation, useNavigate, useParams } from "react-route
 import { ApiError, api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { fullTime } from "../lib/datetime";
-import { buildNav } from "../lib/nav";
+import { useAppNav } from "../lib/nav";
+import { useOrdersToProcess } from "../lib/ordersBadge";
 import { formatPrice, imageSrc } from "../lib/product";
 import { useTheme } from "../lib/theme";
 
@@ -56,6 +57,8 @@ export function OrderDetailPage() {
   const [loggingOut, setLoggingOut] = useState(false);
   const [theme, toggleTheme] = useTheme();
   const location = useLocation();
+  const nav = useAppNav(location.pathname, user?.role);
+  const { refresh: refreshOrdersBadge } = useOrdersToProcess();
   const navigate = useNavigate();
   const { uuid } = useParams();
 
@@ -108,6 +111,8 @@ export function OrderDetailPage() {
     setActionError(undefined);
     try {
       setOrder(await api.updateOrderFulfilment(order.id, value as OrderFulfilmentStatus));
+      // The order may have left the paid-but-unfulfilled bucket.
+      refreshOrdersBadge();
     } catch (error) {
       setActionError(
         error instanceof ApiError ? error.message : "Could not update the fulfilment status.",
@@ -130,7 +135,7 @@ export function OrderDetailPage() {
       onThemeToggle={toggleTheme}
       onLogout={handleLogout}
       loggingOut={loggingOut}
-      nav={buildNav(location.pathname, user.role)}
+      nav={nav}
       onNavigate={(href) => navigate(href)}
     >
       {body}

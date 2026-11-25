@@ -67,6 +67,7 @@ sales-page documents) to the Worker, so cookies are same-origin.
 | POST | `/api/public/shipping-quote` | Quote one allowlisted cart for a destination — flat zones, or a live MyParcel Asia domestic rate; rate-limited → `200` / `404` / `422` / `429` |
 | POST | `/api/public/orders` | Place an order from a sales page's checkout — signed out, rate-limited, prices and shipping revalidated server-side → `201` / `404` / `409` / `422` / `429` |
 | GET | `/api/orders` | Merchant's orders, newest first (`?page=spg_…` narrows to one page) |
+| GET | `/api/orders/summary` | `{ toProcess }` — paid orders still unfulfilled, used by the sidebar badge |
 | GET | `/api/integrations` | Integration instances — **admin-only** (`401`/`403`); reads carry masked hints (`••••1234`), never a secret |
 | POST | `/api/integrations` | Create = connect: provider + name + fields validated against the shared catalogue; secrets AES-GCM encrypted at rest → `201` / `422` |
 | PATCH | `/api/integrations/:uuid` | Rename / rotate credentials / update config — omitted keys stay unchanged (blank secrets are refused) → `200` / `404` / `422` |
@@ -234,8 +235,11 @@ integration: it proves the stored API key decrypts with this environment's
 key cannot be recovered — re-enter the API Key and API Secret, then save.
 
 Orders land as `pending` rows; the merchant reads them at
-`GET /api/orders` (sidebar → Orders). Imported/complete documents ship
-untouched — no checkout is injected into them.
+`GET /api/orders` (sidebar → Orders). The sidebar's **Orders** item carries a
+red count of paid-but-unfulfilled orders; it refreshes on navigation, after a
+fulfilment change, when the tab becomes visible, and on a 60-second poll.
+Imported/complete documents ship untouched — no checkout is injected into
+them.
 
 ## Repo policies
 

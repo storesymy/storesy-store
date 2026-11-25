@@ -363,6 +363,18 @@ a.ui-nav__item--active:hover {
   text-transform: uppercase;
 }
 
+/* Count pill: the sidebar's at-a-glance "needs attention" number. */
+.ui-nav__badge--count {
+  min-width: 20px;
+  padding: 1px 6px;
+  background: var(--st-danger);
+  color: #fff;
+  font-size: 11px;
+  letter-spacing: 0;
+  text-align: center;
+  text-transform: none;
+}
+
 .ui-shell__account {
   position: relative;
   padding-top: 16px;

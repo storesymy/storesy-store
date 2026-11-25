@@ -6,7 +6,7 @@ import { PRODUCT_PRICE_MAX_CENTS, PRODUCT_STOCK_MAX, GALLERY_LIMIT, DOWNLOAD_FIL
 import type { DownloadFile, Product, ProductFulfilment } from "@storesy/shared";
 import { ApiError, api } from "../lib/api";
 import { useAuth } from "../lib/auth";
-import { buildNav, SYSTEM_MENU } from "../lib/nav";
+import { useAppNav, SYSTEM_MENU } from "../lib/nav";
 import { imageSrc, formatBytes, parseUnit, priceToCents } from "../lib/product";
 import { useTheme } from "../lib/theme";
 import { ImageCropModal } from "../components/ImageCropModal";
@@ -189,6 +189,7 @@ export function ProductPage() {
   const [loggingOut, setLoggingOut] = useState(false);
   const [theme, toggleTheme] = useTheme();
   const location = useLocation();
+  const nav = useAppNav(location.pathname, user?.role);
   const navigate = useNavigate();
 
   const [product, setProduct] = useState<Product | null>(null);
@@ -666,7 +667,7 @@ export function ProductPage() {
       onThemeToggle={toggleTheme}
       onLogout={handleLogout}
       loggingOut={loggingOut}
-      nav={buildNav(location.pathname, user.role)}
+      nav={nav}
       onNavigate={(href) => navigate(href)}
       menuLinks={user.role === "owner" ? SYSTEM_MENU : undefined}
     >

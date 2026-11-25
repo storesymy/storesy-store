@@ -37,6 +37,12 @@ export async function create(ctx: Context): Promise<Response> {
   return ctx.json({ order }, 201);
 }
 
+/** GET /api/orders/summary — the sidebar's paid-but-unfulfilled count. */
+export async function summary(ctx: Context): Promise<Response> {
+  if (!ctx.session) throw unauthorized();
+  return ctx.json({ toProcess: await orders.countToProcess(ctx.env) });
+}
+
 /**
  * GET /api/orders — the merchant's list, newest first; `?page=spg-…` narrows
  * it to one sales page.

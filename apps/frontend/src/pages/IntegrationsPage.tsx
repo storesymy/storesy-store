@@ -14,7 +14,7 @@ import { GmailConnectModal } from "../components/GmailConnectModal";
 import { IntegrationDetailsModal } from "../components/IntegrationDetailsModal";
 import { ApiError, api } from "../lib/api";
 import { useAuth } from "../lib/auth";
-import { buildNav, SYSTEM_MENU } from "../lib/nav";
+import { useAppNav, SYSTEM_MENU } from "../lib/nav";
 import { useTheme } from "../lib/theme";
 
 /**
@@ -30,6 +30,7 @@ export function IntegrationsPage() {
   const [loggingOut, setLoggingOut] = useState(false);
   const [theme, toggleTheme] = useTheme();
   const location = useLocation();
+  const nav = useAppNav(location.pathname, user?.role);
   const navigate = useNavigate();
 
   const [rows, setRows] = useState<IntegrationRecord[]>([]);
@@ -201,7 +202,7 @@ export function IntegrationsPage() {
       onThemeToggle={toggleTheme}
       onLogout={handleLogout}
       loggingOut={loggingOut}
-      nav={buildNav(location.pathname, user.role)}
+      nav={nav}
       onNavigate={(href) => navigate(href)}
       menuLinks={user.role === "owner" ? SYSTEM_MENU : undefined}
     >

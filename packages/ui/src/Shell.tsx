@@ -13,6 +13,8 @@ export interface NavItem {
   active?: boolean;
   /** Placeholder for a section that is not built yet — rendered inert. */
   soon?: boolean;
+  /** Red count pill on the right, e.g. paid orders still to process. */
+  count?: number;
 }
 
 export interface ShellProps {
@@ -188,7 +190,13 @@ export function Shell({
                     {item.icon ? <Icon name={item.icon} className="ui-nav__icon" /> : null}
                     {item.label}
                   </span>
-                  {item.soon ? <span className="ui-nav__badge">soon</span> : null}
+                  {item.count && item.count > 0 ? (
+                    <span className="ui-nav__badge ui-nav__badge--count">
+                      {item.count}
+                    </span>
+                  ) : item.soon ? (
+                    <span className="ui-nav__badge">soon</span>
+                  ) : null}
                 </>
               );
 

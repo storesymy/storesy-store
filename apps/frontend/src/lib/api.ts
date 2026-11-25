@@ -270,6 +270,10 @@ export const api = {
 
   /* ---------------------------- /orders (merchant) -------------------------- */
 
+  /** Paid-but-unfulfilled order count for the sidebar badge. */
+  orderSummary: (): Promise<{ toProcess: number }> =>
+    request<{ toProcess: number }>(routes.ordersSummary, { cache: "no-store" }),
+
   /** The merchant's order list, newest first; `page` narrows to one page. */
   customers: (
     params: {

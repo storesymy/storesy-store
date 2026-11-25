@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { ApiError, api } from "../lib/api";
 import { useAuth } from "../lib/auth";
-import { buildNav, SYSTEM_MENU } from "../lib/nav";
+import { useAppNav, SYSTEM_MENU } from "../lib/nav";
 import { useTheme } from "../lib/theme";
 
 type Tab = "data" | "structure";
@@ -51,6 +51,7 @@ export function SystemPage() {
   const [loggingOut, setLoggingOut] = useState(false);
   const [theme, toggleTheme] = useTheme();
   const location = useLocation();
+  const nav = useAppNav(location.pathname, user?.role);
   const navigate = useNavigate();
 
   const [config, setConfig] = useState<DbConfig | null>(null);
@@ -182,7 +183,7 @@ export function SystemPage() {
       onThemeToggle={toggleTheme}
       onLogout={handleLogout}
       loggingOut={loggingOut}
-      nav={buildNav(location.pathname, user.role)}
+      nav={nav}
       onNavigate={(href) => navigate(href)}
       menuLinks={SYSTEM_MENU}
     >

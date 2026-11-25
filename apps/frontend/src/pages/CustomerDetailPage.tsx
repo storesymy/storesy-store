@@ -7,7 +7,7 @@ import { Link, Navigate, useLocation, useNavigate, useParams } from "react-route
 import { ApiError, api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { fullTime } from "../lib/datetime";
-import { buildNav } from "../lib/nav";
+import { useAppNav } from "../lib/nav";
 import { formatPrice } from "../lib/product";
 import { useTheme } from "../lib/theme";
 
@@ -54,6 +54,7 @@ export function CustomerDetailPage() {
   const [loggingOut, setLoggingOut] = useState(false);
   const [theme, toggleTheme] = useTheme();
   const location = useLocation();
+  const nav = useAppNav(location.pathname, user?.role);
   const navigate = useNavigate();
   const { uuid } = useParams();
 
@@ -111,7 +112,7 @@ export function CustomerDetailPage() {
       onThemeToggle={toggleTheme}
       onLogout={handleLogout}
       loggingOut={loggingOut}
-      nav={buildNav(location.pathname, user.role)}
+      nav={nav}
       onNavigate={(href) => navigate(href)}
     >
       {body}

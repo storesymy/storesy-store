@@ -5,7 +5,7 @@ import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import type { Product } from "@storesy/shared";
 import { ApiError, api } from "../lib/api";
 import { useAuth } from "../lib/auth";
-import { buildNav, SYSTEM_MENU } from "../lib/nav";
+import { useAppNav, SYSTEM_MENU } from "../lib/nav";
 import { formatPrice, imageSrc } from "../lib/product";
 import { useTheme } from "../lib/theme";
 
@@ -43,6 +43,7 @@ export function ProductsPage() {
   const [loggingOut, setLoggingOut] = useState(false);
   const [theme, toggleTheme] = useTheme();
   const location = useLocation();
+  const nav = useAppNav(location.pathname, user?.role);
   const navigate = useNavigate();
 
   const [products, setProducts] = useState<ProductRow[]>([]);
@@ -184,7 +185,7 @@ export function ProductsPage() {
       onThemeToggle={toggleTheme}
       onLogout={handleLogout}
       loggingOut={loggingOut}
-      nav={buildNav(location.pathname, user.role)}
+      nav={nav}
       onNavigate={(href) => navigate(href)}
       menuLinks={user.role === "owner" ? SYSTEM_MENU : undefined}
     >

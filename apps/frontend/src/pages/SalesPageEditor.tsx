@@ -18,7 +18,7 @@ import { useAuth } from "../lib/auth";
 import { ensureGoogleFont } from "../lib/googleFonts";
 import { primaryButtonColors } from "../lib/salesPageDocument";
 import type { FileImportOutcome, ImportOutcome } from "../lib/importUrl";
-import { buildNav, SYSTEM_MENU } from "../lib/nav";
+import { useAppNav, SYSTEM_MENU } from "../lib/nav";
 import {
   SECTION_ITEM_MAX,
   SECTION_KINDS,
@@ -55,6 +55,7 @@ export function SalesPageEditor() {
   const [loggingOut, setLoggingOut] = useState(false);
   const [theme, toggleTheme] = useTheme();
   const location = useLocation();
+  const nav = useAppNav(location.pathname, user?.role);
   const navigate = useNavigate();
   const { uuid } = useParams();
 
@@ -222,7 +223,7 @@ export function SalesPageEditor() {
         onThemeToggle={toggleTheme}
         onLogout={handleLogout}
         loggingOut={loggingOut}
-        nav={buildNav(location.pathname, user.role)}
+        nav={nav}
         onNavigate={(href) => navigate(href)}
         menuLinks={user.role === "owner" ? SYSTEM_MENU : undefined}
       >
@@ -598,7 +599,7 @@ export function SalesPageEditor() {
       onThemeToggle={toggleTheme}
       onLogout={handleLogout}
       loggingOut={loggingOut}
-      nav={buildNav(location.pathname, user.role)}
+      nav={nav}
       onNavigate={(href) => navigate(href)}
       menuLinks={user.role === "owner" ? SYSTEM_MENU : undefined}
     >

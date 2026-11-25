@@ -287,6 +287,11 @@ export function toPublic(
   };
 }
 
+/** Sidebar badge: paid orders that still need the merchant's fulfilment. */
+export async function countToProcess(env: Env): Promise<number> {
+  return ordersModel.countOrdersToProcess(env);
+}
+
 /** One order for the detail page. */
 export async function get(env: Env, uuid: string): Promise<Order> {
   const found = await ordersModel.findOrderByUuid(env, uuid);
