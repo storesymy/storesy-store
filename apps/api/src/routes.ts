@@ -12,6 +12,7 @@ import * as orders from "./controllers/orders.controller";
 import * as payments from "./controllers/payments.controller";
 import * as products from "./controllers/products.controller";
 import * as salespages from "./controllers/salespages.controller";
+import * as shippingZones from "./controllers/shippingZones.controller";
 import { Router } from "./core/router";
 
 export function buildRouter(): Router {
@@ -27,6 +28,13 @@ export function buildRouter(): Router {
     .get("/api/products/:uuid", products.detail)
     .post("/api/products", products.create)
     .patch("/api/products/:uuid", products.update)
+    // Shipping Zone — delivery rates. Session-gated like products; no
+    // credentials live here, so every signed-in role may manage them.
+    .get("/api/shipping-zones", shippingZones.list)
+    .get("/api/shipping-zones/:uuid", shippingZones.detail)
+    .post("/api/shipping-zones", shippingZones.create)
+    .patch("/api/shipping-zones/:uuid", shippingZones.update)
+    .delete("/api/shipping-zones/:uuid", shippingZones.remove)
     // Sales pages — any signed-in account, like products. Documents live in
     // R2; the row records their paths. The public read is the signed-out
     // storefront view (`/<slug>`), and it counts views via the counter DO.

@@ -2,6 +2,12 @@ import { z } from "zod";
 import { countryByCode } from "./countries";
 import { unknownTemplatePlaceholders } from "./emailTemplates";
 import { isReservedSlug } from "./routing";
+import {
+  SHIPPING_PRICE_TYPES,
+  SHIPPING_ZONE_STATUSES,
+  isShippingCourierKey,
+  isShippingZoneKey,
+} from "./shipping";
 
 /** Trimmed, lowercased, plausible-email check. One source of truth for API + forms. */
 export const emailSchema = z
@@ -526,12 +532,60 @@ export const updateSalesPageSchema = z
 
 export type SignupInput = z.infer<typeof signupSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
+export type ShippingZoneInput = z.infer<typeof shippingZoneInputSchema>;
 export type CreateProductInput = z.infer<typeof createProductSchema>;
 export type UpdateProductInput = z.infer<typeof updateProductSchema>;
 export type CreateSalesPageInput = z.infer<typeof createSalesPageSchema>;
 export type UpdateSalesPageInput = z.infer<typeof updateSalesPageSchema>;
 export type SalesPageHtmlSlot = z.infer<typeof salesPageHtmlSlotSchema>;
 export type SalesPageStatus = z.infer<typeof salesPageStatusSchema>;
+
+/**
+ * One shipping rate: a catalog zone + courier, how the amount is produced, and
+ * whether checkout may use it. Follow API stores no amount; the other two
+ * require one. Enforced again by a CHECK in the migration.
+ */
+export const shippingZoneInputSchema = z
+  .object({
+    zoneKey: z
+      .string()
+      .trim()
+      .min(1, "Choose a zone")
+      .refine(isShippingZoneKey, "Choose a valid zone"),
+    courierKey: z
+      .string()
+      .trim()
+      .min(1, "Choose a courier")
+      .refine(isShippingCourierKey, "Choose a valid courier"),
+    priceType: z.enum(SHIPPING_PRICE_TYPES),
+    priceCents: z
+      .number()
+      .int("Price must be in cents")
+      .min(0, "Price cannot be negative")
+      .max(PRODUCT_PRICE_MAX_CENTS, "Price is too high")
+      .nullable()
+      .optional(),
+    status: z.enum(SHIPPING_ZONE_STATUSES).optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.priceType === "api") {
+      if (value.priceCents != null) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["priceCents"],
+          message: "Follow API rates have no amount",
+        });
+      }
+      return;
+    }
+    if (value.priceCents == null) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["priceCents"],
+        message: "Enter an amount for this price type",
+      });
+    }
+  });
 
 /**
  * The URL importer: the SPA asks the Worker to fetch one remote resource —

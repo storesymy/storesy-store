@@ -1,5 +1,11 @@
 import type { EmailTemplatePlaceholder } from "./emailTemplates";
 import type { SalesPageHtmlSlot, SalesPageStatus } from "./schemas";
+import type {
+  ShippingCourierKey,
+  ShippingPriceType,
+  ShippingZoneKey,
+  ShippingZoneStatus,
+} from "./shipping";
 
 /** The public shape of a user. Never leaks password material. */
 export interface User {
@@ -36,6 +42,24 @@ export interface DownloadFile {
   path: string;
   name: string;
   size: number;
+}
+
+/**
+ * One delivery rate as the API returns it. `zoneKey`/`courierKey` are catalog
+ * keys; the SPA turns them into labels so a copy change never needs a row
+ * migration. Money is in cents; `api` rates carry `priceCents: null`.
+ */
+export interface ShippingZone {
+  /** Public id: prefixed UUIDv7, e.g. `shz-0199f3c2-…` (time-ordered). */
+  id: string;
+  zoneKey: ShippingZoneKey;
+  courierKey: ShippingCourierKey;
+  priceType: ShippingPriceType;
+  priceCents: number | null;
+  status: ShippingZoneStatus;
+  /** `YYYY-MM-DD HH:MM:SS` in Asia/Kuala_Lumpur. */
+  createdAt: string;
+  updatedAt: string;
 }
 
 /** A product as the API returns it — money in cents, dates as KL text. */
@@ -453,6 +477,7 @@ export const routes = {
   me: `${API_BASE}/me`,
   health: `${API_BASE}/health`,
   products: `${API_BASE}/products`,
+  shippingZones: `${API_BASE}/shipping-zones`,
   salesPages: `${API_BASE}/salespages`,
   orders: `${API_BASE}/orders`,
   customers: `${API_BASE}/customers`,

@@ -542,3 +542,60 @@ export const gmailOAuthFlows = sqliteTable(
 
 export type GmailOAuthFlowRow = typeof gmailOAuthFlows.$inferSelect;
 export type NewGmailOAuthFlowRow = typeof gmailOAuthFlows.$inferInsert;
+
+/**
+ * One delivery rate per (zone, courier). Zone and courier are stable catalog
+ * keys from `@storesy/shared`; labels are derived, never stored. The amount
+ * lives in `data` (nothing indexes it), while `status` is a column because
+ * checkout filters active rates.
+ */
+export interface ShippingZoneData {
+  /** `flat` fixed rate; `api` follows the courier quote; `markup` adds to it. */
+  priceType: "flat" | "api" | "markup";
+  /** Cents for flat/markup; null for api. Guarded by the table CHECK. */
+  priceCents: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const shippingZones = sqliteTable(
+  "shipping_zones",
+  {
+    /** Internal row identifier: bigint autoincrement primary key. */
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    /** Public identifier: prefixed UUIDv7, e.g. `shz-0199f3c2-…`. */
+    uuid: text("uuid").notNull(),
+    /** Catalog zone key (`my-sabah-sarawak`, `SG`, …). */
+    zoneKey: text("zone_key").notNull(),
+    /** Catalog courier key (`jnt`, `ninjavan`, …). */
+    courierKey: text("courier_key").notNull(),
+    /** `active` rates are available at checkout; `inactive` ones are paused. */
+    status: text("status").notNull().default("active"),
+    /** Non-indexed model fields — see ShippingZoneData. */
+    data: text("data", { mode: "json" }).$type<ShippingZoneData>().notNull(),
+  },
+  (table) => [
+    uniqueIndex("shipping_zones_uuid_unique").on(table.uuid),
+    uniqueIndex("shipping_zones_zone_courier_unique").on(table.zoneKey, table.courierKey),
+    index("shipping_zones_status_idx").on(table.status),
+    check("shipping_zones_data_json", sql`json_valid(${table.data})`),
+    check("shipping_zones_status", sql`${table.status} IN ('active', 'inactive')`),
+    check(
+      "shipping_zones_price_amount",
+      sql`(
+        json_extract(${table.data}, '$.priceType') IN ('flat', 'api', 'markup')
+        AND (
+          (json_extract(${table.data}, '$.priceType') = 'api'
+            AND json_extract(${table.data}, '$.priceCents') IS NULL)
+          OR
+          (json_extract(${table.data}, '$.priceType') IN ('flat', 'markup')
+            AND typeof(json_extract(${table.data}, '$.priceCents')) = 'integer'
+            AND json_extract(${table.data}, '$.priceCents') >= 0)
+        )
+      )`,
+    ),
+  ],
+);
+
+export type ShippingZoneRow = typeof shippingZones.$inferSelect;
+export type NewShippingZoneRow = typeof shippingZones.$inferInsert;

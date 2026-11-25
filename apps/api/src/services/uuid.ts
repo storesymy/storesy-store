@@ -20,6 +20,7 @@ export const ID_PREFIX = {
   customer: "cus",
   contact: "cdt",
   salesPage: "spg",
+  shippingZone: "shz",
   emailTemplate: "tpl",
   gmailOAuthFlow: "gpo",
 } as const;

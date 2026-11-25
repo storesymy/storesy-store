@@ -1,12 +1,22 @@
 import type { SelectHTMLAttributes } from "react";
 
+/** One dropdown entry whose stored value differs from its display label. */
+export interface SelectOption {
+  value: string;
+  label: string;
+}
+
 export interface SelectFieldProps
   extends Omit<SelectHTMLAttributes<HTMLSelectElement>, "onChange" | "value"> {
   label: string;
   name: string;
   value: string;
-  /** Allowed values, in order; the first is the natural default. */
-  options: readonly string[];
+  /**
+   * Allowed values, in order; the first is the natural default. Plain strings
+   * use the value as the label; `{ value, label }` pairs show a friendlier
+   * label while storing the key.
+   */
+  options: readonly (string | SelectOption)[];
   onValueChange: (value: string) => void;
   error?: string | undefined;
 }
@@ -41,11 +51,14 @@ export function SelectField({
         onChange={(event) => onValueChange(event.target.value)}
         {...rest}
       >
-        {options.map((option) => (
-          <option key={option} value={option}>
-            {option}
-          </option>
-        ))}
+        {options.map((option) => {
+          const entry = typeof option === "string" ? { value: option, label: option } : option;
+          return (
+            <option key={entry.value} value={entry.value}>
+              {entry.label}
+            </option>
+          );
+        })}
       </select>
       {invalid ? (
         <p className="ui-field__error" id={`${name}-error`} role="alert">

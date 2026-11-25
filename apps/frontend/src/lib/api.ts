@@ -21,6 +21,8 @@ import type {
   SalesPage as ApiSalesPage,
   SalesPageSummary,
   SignupInput,
+  ShippingZone,
+  ShippingZoneInput,
   SignupStatus,
   UpdateEmailTemplateInput,
   UpdateIntegrationInput,
@@ -197,6 +199,28 @@ export const api = {
         "X-File-Name": encodeURIComponent(file.name || "download"),
       },
       body: file,
+    }),
+
+  /* ---------------------------- /shipping-zones --------------------------- */
+
+  shippingZones: (): Promise<{ shippingZones: ShippingZone[] }> =>
+    request<{ shippingZones: ShippingZone[] }>(routes.shippingZones),
+
+  createShippingZone: (input: ShippingZoneInput): Promise<ShippingZone> =>
+    request<ShippingZone>(routes.shippingZones, {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+
+  updateShippingZone: (id: string, input: ShippingZoneInput): Promise<ShippingZone> =>
+    request<ShippingZone>(`${routes.shippingZones}/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    }),
+
+  deleteShippingZone: (id: string): Promise<void> =>
+    request<void>(`${routes.shippingZones}/${encodeURIComponent(id)}`, {
+      method: "DELETE",
     }),
 
   /* --------------------- /salespages (studio + public) -------------------- */
