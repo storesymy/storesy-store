@@ -33,7 +33,10 @@ export class MyParcelError extends Error {
 /** Hosts the integration may target; anything else is refused (SSRF guard). */
 export const MPA_HOSTS = ["app.myparcelasia.com", "demo.myparcelasia.com"] as const;
 
-const MPA_TIMEOUT_MS = 8_000;
+// MyParcel Asia's check_price can take ~10s on a cold upstream; the
+// official WooCommerce plugin allows 45s. 20s keeps checkout responsive
+// without aborting a legitimate quote.
+const MPA_TIMEOUT_MS = 20_000;
 const QUOTE_CACHE_TTL_SECONDS = 300;
 
 export interface MpaCredentials {
@@ -199,7 +202,11 @@ export async function quoteForCredentials(
   try {
     response = await doFetch(`https://${credentials.host}/apiv3/check_price`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        "User-Agent": "Storesy/1.0 (+https://storesy.my)",
+      },
       body: JSON.stringify({
         api_key: credentials.apiKey,
         sender_postcode: credentials.senderPostcode,
