@@ -6571,3 +6571,74 @@ button.sf-action:disabled {
   line-height: 1.5;
   text-align: center;
 }
+
+/* ---- Shipping Zone: table actions + empty row + dialog hint ---- */
+
+/* Six columns stay inside the panel at desktop width; long country names
+   wrap instead of pushing Action off-screen. */
+.sz__table {
+  table-layout: fixed;
+}
+
+.sz__table th,
+.sz__table td {
+  box-sizing: border-box;
+}
+
+.sz__table th:nth-child(1),
+.sz__table td:nth-child(1) {
+  width: 25%;
+}
+
+.sz__table th:nth-child(2),
+.sz__table td:nth-child(2) {
+  width: 17%;
+}
+
+.sz__table th:nth-child(3),
+.sz__table td:nth-child(3) {
+  width: 13%;
+}
+
+.sz__table th:nth-child(4),
+.sz__table td:nth-child(4) {
+  width: 15%;
+}
+
+.sz__table th:nth-child(5),
+.sz__table td:nth-child(5) {
+  width: 10%;
+}
+
+.sz__table th:nth-child(6),
+.sz__table td:nth-child(6) {
+  width: 20%;
+}
+
+.sz__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.sz__actions .ui-btn {
+  min-height: 30px;
+  padding: 0 10px;
+  font-size: 12.5px;
+}
+
+.sz__empty {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding: 38px 16px;
+  text-align: center;
+}
+
+.sz__hint {
+  margin: -2px 0 0;
+  color: var(--st-ink-soft);
+  font-size: 12px;
+  line-height: 1.5;
+}

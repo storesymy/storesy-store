@@ -28,6 +28,12 @@ export function buildNav(pathname: string, role?: string): NavItem[] {
       active: pathname === "/orders" || pathname.startsWith("/order/"),
     },
     {
+      label: "Shipping Zone",
+      icon: "truck",
+      href: "/shipping-zone",
+      active: pathname === "/shipping-zone",
+    },
+    {
       label: "Customers",
       icon: "customers",
       href: "/customers",

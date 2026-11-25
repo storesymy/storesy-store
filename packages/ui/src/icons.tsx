@@ -6,6 +6,7 @@ export type IconName =
   | "stores"
   | "products"
   | "orders"
+  | "truck"
   | "customers"
   | "inventories"
   | "email"
@@ -73,6 +74,15 @@ const GLYPHS: Record<IconName, ReactNode> = {
       <path d="M6 3h12v18l-3-1.8-3 1.8-3-1.8L6 21Z" />
       <path d="M9.5 8.5h5" />
       <path d="M9.5 12.5h5" />
+    </>
+  ),
+  // Delivery truck — Shipping Zone
+  truck: (
+    <>
+      <path d="M2.5 6.5h10v9.5h-10z" />
+      <path d="M12.5 9.5h4l3 3v3.5h-7" />
+      <circle cx="6.5" cy="18" r="1.6" />
+      <circle cx="16.5" cy="18" r="1.6" />
     </>
   ),
   // People

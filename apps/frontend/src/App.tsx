@@ -13,6 +13,7 @@ import { StorePage } from "./pages/StorePage";
 import { ProductPage } from "./pages/ProductPage";
 import { SalesPageEditor } from "./pages/SalesPageEditor";
 import { SalesPagesPage } from "./pages/SalesPagesPage";
+import { ShippingZonePage } from "./pages/ShippingZonePage";
 import { SystemPage } from "./pages/SystemPage";
 import { TemplatesPage } from "./pages/TemplatesPage";
 
@@ -31,6 +32,8 @@ export function App() {
       <Route path="/orders" element={<OrdersPage />} />
       {/* One order's detail — reached from the NO link on /orders. */}
       <Route path="/order/:uuid" element={<OrderDetailPage />} />
+      {/* Shipping Zone — UI-only table + create/edit dialog (no API yet). */}
+      <Route path="/shipping-zone" element={<ShippingZonePage />} />
       {/* Email templates — the messages the store sends automatically. */}
       <Route path="/templates" element={<TemplatesPage />} />
       {/* Customers — buyers, deduped by email at checkout. */}
