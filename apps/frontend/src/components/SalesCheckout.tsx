@@ -252,6 +252,11 @@ export function SalesCheckout({ slug, productIds, payColors }: Props) {
     : (flatRate?.courierKey ?? null);
   const courierLabel = courierKey ? (couriers[courierKey] ?? courierKey) : "";
   const total = subtotal + shipping;
+  const paymentReady =
+    !needsShipment ||
+    (requiresQuote
+      ? quoteReady && !quoteLoading && shippingQuote?.available === true
+      : ratesKnown && !ratesError && !localUnavailable);
 
   const add = (id: string) => setCart((prev) => ({ ...prev, [id]: (prev[id] ?? 0) + 1 }));
   const bump = (id: string, delta: number) =>
@@ -454,6 +459,8 @@ export function SalesCheckout({ slug, productIds, payColors }: Props) {
         <button
           type="button"
           className="sco__pay"
+          disabled={!paymentReady}
+          title={paymentReady ? undefined : "Waiting for the shipping price…"}
           style={
             payColors
               ? { background: payColors.background, color: payColors.color }

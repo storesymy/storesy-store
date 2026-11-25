@@ -178,7 +178,7 @@ function checkoutMarkup(page: SalesPage, products: Product[]): string {
     `</select></label>` +
     `</div>` +
     `<p class="sco__err" data-err hidden></p>` +
-    `<button type="submit" class="sco__pay" data-submit>Proceed to Payment</button>` +
+    `<button type="submit" class="sco__pay" data-submit disabled>Proceed to Payment</button>` +
     `</form>` +
     // Admin-only test controls. Hidden for buyers; the script reveals them
     // when /api/me answers with an owner/admin session, and the endpoint
@@ -253,6 +253,7 @@ const CHECKOUT_SCRIPT = [
   '  var errEl = root.querySelector("[data-err]");',
   '  var submitBtn = root.querySelector("[data-submit]");',
   '  var payLabel = submitBtn.textContent;',
+  '  var busy = false;',
   // The buyer's own details survive a refresh and are shared across the
   // store's pages: saved as they type, filled back on the next visit.
   '  var profileKey = "storesy.customer";',
@@ -293,19 +294,21 @@ const CHECKOUT_SCRIPT = [
   '  formEl.addEventListener("change", render);',
   '  formEl.addEventListener("change", scheduleQuote);',
   '  formEl.addEventListener("input", function (event) {',
-  '    if (event.target && event.target.name === "postcode") scheduleQuote();',
+  '    if (event.target && event.target.name === "postcode") { scheduleQuote(); render(); }',
   '  });',
   '  function setBusy(label) {',
+  '    busy = true;',
   '    submitBtn.disabled = true;',
   '    submitBtn.classList.add("sco__pay--busy");',
   '    submitBtn.setAttribute("aria-busy", "true");',
   '    submitBtn.textContent = label;',
   '  }',
   '  function setIdle() {',
-  '    submitBtn.disabled = false;',
+  '    busy = false;',
   '    submitBtn.classList.remove("sco__pay--busy");',
   '    submitBtn.removeAttribute("aria-busy");',
   '    submitBtn.textContent = payLabel;',
+  '    syncSubmitState();',
   '  }',
   '  function money(cents) { return "RM" + (cents / 100).toFixed(2); }',
   '  function save() { try { localStorage.setItem(key, JSON.stringify(cart)); } catch (e) {} }',
@@ -455,6 +458,15 @@ const CHECKOUT_SCRIPT = [
   '      ships: true, shippingOk: shipping.ok, reason: shipping.reason, message: "",',
   '      loading: rates === null, courier: shipping.courier || null };',
   '  }',
+  '  function shippingReady(t) {',
+  '    if (!t.ships) return true;',
+  '    if (t.loading) return false;',
+  '    if (t.reason === "destination_incomplete") return false;',
+  '    return t.shippingOk;',
+  '  }',
+  '  function syncSubmitState() {',
+  '    submitBtn.disabled = busy || !shippingReady(totals());',
+  '  }',
   '  function syncStateFields(ships) {',
   '    var my = root.querySelector("[data-my-state]");',
   '    var intl = root.querySelector("[data-intl-state]");',
@@ -532,6 +544,7 @@ const CHECKOUT_SCRIPT = [
   '    var addr = root.querySelectorAll("[data-addr]");',
   '    for (var j = 0; j < addr.length; j++) addr[j].hidden = !t.ships;',
   '    syncStateFields(t.ships);',
+  '    syncSubmitState();',
   '  }',
   '  function fail(message) { errEl.textContent = message; errEl.hidden = false; }',
   '  function customerFromForm() {',
