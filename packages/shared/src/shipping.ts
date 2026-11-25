@@ -186,6 +186,9 @@ export function shippingZoneCandidates(countryCode: string, state: string): stri
   if (key === "my-sabah" || key === "my-sarawak") {
     return [key, "my-sabah-sarawak", "my-all"];
   }
+  // Labuan is neither peninsular nor part of the Sabah-Sarawak label; only a
+  // specific Labuan rate or the nationwide rate applies.
+  if (key === "my-labuan") return [key, "my-all"];
   return [key, "my-peninsular", "my-all"];
 }
 

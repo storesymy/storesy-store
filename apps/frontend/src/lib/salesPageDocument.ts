@@ -316,6 +316,7 @@ const CHECKOUT_SCRIPT = [
   '    if (!label) return ["my-all"];',
   '    var exact = stateKeys[label];',
   '    if (!exact) return [];',
+  '    if (exact === "my-labuan") return [exact, "my-all"];',
   '    var fallback = exact === "my-sabah" || exact === "my-sarawak"',
   '      ? "my-sabah-sarawak" : "my-peninsular";',
   '    return [exact, fallback, "my-all"];',

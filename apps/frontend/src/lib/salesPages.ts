@@ -1037,6 +1037,8 @@ export async function refreshSalesPageDocuments(): Promise<void> {
   for (const summary of summaries) {
     try {
       const page = fromWire(await api.salesPage(summary.id));
+      // Only pages that actually carry the checkout block need a rewrite.
+      if (page.style.checkout !== "show" || page.checkoutProducts.length === 0) continue;
       await saveSalesPage(page);
     } catch (error) {
       console.error("salespage_document_refresh_failed", summary.id, error);
