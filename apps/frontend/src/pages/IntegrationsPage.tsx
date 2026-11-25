@@ -332,6 +332,11 @@ export function IntegrationsPage() {
           onClose={() => setDetailUuid(null)}
           onDelete={() => handleDelete(detailRow.uuid)}
           onTestEmail={(overrides) => api.testIntegrationEmail(detailRow.uuid, overrides)}
+          onVerify={
+            detailProvider?.id === "myparcel-asia"
+              ? () => api.verifyIntegration(detailRow.uuid)
+              : undefined
+          }
           onSaveField={(patch) => handleSaveField(detailRow.uuid, patch)}
           onReconnect={
             detailProvider?.auth === "google-oauth"

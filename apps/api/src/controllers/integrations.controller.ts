@@ -14,6 +14,7 @@ import * as usersRepo from "../models/users.repository";
 import { GmailOAuthError } from "../services/gmail.service";
 import * as gmailOAuth from "../services/gmailOAuth.service";
 import * as integrations from "../services/integrations.service";
+import * as myParcel from "../services/myParcel.service";
 
 /**
  * Integrations carry live payment and email credentials, so this is the
@@ -54,6 +55,17 @@ export async function remove(ctx: Context): Promise<Response> {
   await requireAdmin(ctx);
   await integrations.remove(ctx.env, ctx.params.uuid ?? "");
   return ctx.noContent();
+}
+
+/**
+ * Setup check: proves the stored credential decrypts in THIS environment and
+ * asks the provider for one sample quote. Admin-only; never returns a secret.
+ */
+export async function verify(ctx: Context): Promise<Response> {
+  await requireAdmin(ctx);
+  const result = await myParcel.verifyIntegration(ctx.env, ctx.params.uuid ?? "");
+  if (!result) throw notFound("not_found", "Integration not found");
+  return ctx.json(result);
 }
 
 /**

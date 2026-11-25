@@ -8,6 +8,7 @@ import {
 import type {
   IntegrationRecord,
   IntegrationProvider,
+  IntegrationVerifyResult,
   UpdateIntegrationInput,
 } from "@storesy/shared";
 import { formatAddedAt } from "../lib/integrations";
@@ -42,6 +43,8 @@ interface Props {
    * browser leaves for Google; the caller never sees this resolve.
    */
   onReconnect?: () => Promise<void>;
+  /** Provider setup check (MyParcel Asia): decrypt key + sample quote. */
+  onVerify?: () => Promise<IntegrationVerifyResult>;
 }
 
 interface RowProps {
@@ -195,6 +198,7 @@ export function IntegrationDetailsModal({
   onTestEmail,
   onSaveField,
   onReconnect,
+  onVerify,
   sessionEmail,
 }: Props) {
   const [deleting, setDeleting] = useState(false);
@@ -203,6 +207,8 @@ export function IntegrationDetailsModal({
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<string | undefined>(undefined);
   const [testError, setTestError] = useState<string | undefined>(undefined);
+  const [verifying, setVerifying] = useState(false);
+  const [verifyResult, setVerifyResult] = useState<IntegrationVerifyResult | undefined>(undefined);
 
   // Catalogue-driven Test Email: `fields` → a section in this modal;
   // capability without fields (Cloudflare) → the footer button; none → off.
@@ -304,6 +310,23 @@ export function IntegrationDetailsModal({
       setEditing((prev) => (prev ? { key: prev.key, value } : prev)),
   };
 
+  async function handleVerify() {
+    if (!onVerify) return;
+    setVerifying(true);
+    setVerifyResult(undefined);
+    try {
+      setVerifyResult(await onVerify());
+    } catch (err) {
+      setVerifyResult({
+        ok: false,
+        code: "client_error",
+        message: err instanceof Error ? err.message : "Could not verify the connection.",
+      });
+    } finally {
+      setVerifying(false);
+    }
+  }
+
   async function handleReconnect() {
     if (!onReconnect) return;
     setReconnecting(true);
@@ -400,6 +423,28 @@ export function IntegrationDetailsModal({
               This row predates Google sign-in and can no longer send email.
               Reconnect to replace its stored App Password.
             </p>
+          ) : null}
+          {onVerify ? (
+            <div className="itg-test">
+              <p className="itg-test__title">Connection</p>
+              <div className="itg-test__actions">
+                <Button
+                  variant="secondary"
+                  disabled={verifying || saving || deleting}
+                  onClick={() => void handleVerify()}
+                >
+                  {verifying ? "Checking…" : "Verify Connection"}
+                </Button>
+                {verifyResult ? (
+                  <p
+                    className={verifyResult.ok ? "pd-modal__ok" : "pd-modal__error"}
+                    role={verifyResult.ok ? "status" : "alert"}
+                  >
+                    {verifyResult.message}
+                  </p>
+                ) : null}
+              </div>
+            </div>
           ) : null}
           {testFields ? (
             <div className="itg-test">

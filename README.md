@@ -71,6 +71,7 @@ sales-page documents) to the Worker, so cookies are same-origin.
 | POST | `/api/integrations` | Create = connect: provider + name + fields validated against the shared catalogue; secrets AES-GCM encrypted at rest → `201` / `422` |
 | PATCH | `/api/integrations/:uuid` | Rename / rotate credentials / update config — omitted keys stay unchanged (blank secrets are refused) → `200` / `404` / `422` |
 | DELETE | `/api/integrations/:uuid` | Hard-delete an instance → `204` / `404` |
+| POST | `/api/integrations/:uuid/verify` | **Admin-only** setup check (MyParcel Asia): proves the stored key decrypts in this environment and asks for one sample quote — never returns a secret |
 | POST | `/api/integrations/gmail/oauth/start` | Begin Google sign-in (optional `{ integrationUuid }` to reconnect) → `{ url }`; `400 gmail_oauth_not_configured` until the OAuth client is set |
 | GET | `/api/integrations/gmail/oauth/callback` | Google's return trip — validates the single-use `state`, exchanges the code, encrypts the refresh token, then answers with an HTML redirect page (`?gmail=connected` / `?gmail=error`) |
 | GET | `/api/integrations/gmail/oauth/pending` | The confirmation dialog's data — email, scopes, suggested name; **never a token** → `200` / `404` |
@@ -219,6 +220,11 @@ Live rate rules:
 
 Saving or deleting a zone rebuilds every page's stored document so an old page
 cannot keep submitting the previous total.
+
+After entering the MyParcel Asia credentials, use **Verify Connection** on the
+integration: it proves the stored API key decrypts with this environment's
+`INTEGRATIONS_KEY` and returns a sample quote. A key encrypted under an older
+key cannot be recovered — re-enter the API Key and API Secret, then save.
 
 Orders land as `pending` rows; the merchant reads them at
 `GET /api/orders` (sidebar → Orders). Imported/complete documents ship

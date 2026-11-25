@@ -14,6 +14,7 @@ import type {
   GmailOAuthPending,
   GmailOAuthStart,
   IntegrationRecord,
+  IntegrationVerifyResult,
   LoginInput,
   Order,
   OrderFulfilmentStatus,
@@ -112,6 +113,13 @@ export const api = {
 
   deleteIntegration: (id: string): Promise<void> =>
     request<void>(`${routes.integrations}/${encodeURIComponent(id)}`, { method: "DELETE" }),
+
+  /** Setup check: decrypts the stored credential and asks for a sample quote. */
+  verifyIntegration: (id: string): Promise<IntegrationVerifyResult> =>
+    request<IntegrationVerifyResult>(
+      `${routes.integrations}/${encodeURIComponent(id)}/verify`,
+      { method: "POST" },
+    ),
 
   testIntegrationEmail: (
     id: string,

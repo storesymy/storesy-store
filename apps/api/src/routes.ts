@@ -92,6 +92,9 @@ export function buildRouter(): Router {
     .delete("/api/integrations/gmail/oauth/pending", integrations.gmailDiscard)
     .patch("/api/integrations/:uuid", integrations.update)
     .delete("/api/integrations/:uuid", integrations.remove)
+    // Setup check for MyParcel Asia (admin-only): decrypts the stored key and
+    // asks for one sample quote — no secret ever leaves the server.
+    .post("/api/integrations/:uuid/verify", integrations.verify)
     // Test Email — admin-only; sends to the SESSION user (Cloudflare only).
     .post("/api/integrations/:uuid/test-email", integrations.testEmail)
     // Images — upload is a session-gated write; reads are public (the

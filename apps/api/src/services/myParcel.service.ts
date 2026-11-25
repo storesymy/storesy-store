@@ -169,22 +169,15 @@ async function writeCache(env: Env, key: string, prices: Map<string, number>): P
 }
 
 /**
- * Live domestic quote for one parcel. Throws {@link MyParcelError} with a
- * machine-readable code; callers translate that to buyer-safe copy.
+ * The network half: quote with explicit credentials (shared by the live
+ * config lookup and the setup verifier).
  */
-export async function quoteRates(
+export async function quoteForCredentials(
   env: Env,
+  credentials: MpaCredentials,
   input: { receiverPostcode: string; weightKg: number },
   options: { fetchImpl?: MpaFetch; skipCache?: boolean } = {},
 ): Promise<Map<string, number>> {
-  const credentials = await mpaCredentials(env);
-  if (!credentials) {
-    throw new MyParcelError(
-      "not_configured",
-      "MyParcel Asia is missing a host, API key or sender postcode",
-    );
-  }
-
   const receiverPostcode = input.receiverPostcode.trim();
   if (!/^\d{5}$/.test(receiverPostcode)) {
     throw new MyParcelError("invalid_response", "A 5-digit destination postcode is required");
@@ -238,4 +231,96 @@ export async function quoteRates(
   const prices = parseMpaRates(body);
   if (!options.skipCache) await writeCache(env, key, prices);
   return prices;
+}
+
+/**
+ * Live domestic quote using the newest connected account. Throws
+ * {@link MyParcelError} with a machine-readable code; callers translate that
+ * to buyer-safe copy.
+ */
+export async function quoteRates(
+  env: Env,
+  input: { receiverPostcode: string; weightKg: number },
+  options: { fetchImpl?: MpaFetch; skipCache?: boolean } = {},
+): Promise<Map<string, number>> {
+  const credentials = await mpaCredentials(env);
+  if (!credentials) {
+    throw new MyParcelError(
+      "not_configured",
+      "MyParcel Asia is missing a host, API key or sender postcode",
+    );
+  }
+  return quoteForCredentials(env, credentials, input, options);
+}
+
+export interface MyParcelVerifyResult {
+  ok: boolean;
+  code: string;
+  message: string;
+  couriers?: string[];
+}
+
+/**
+ * Setup verifier for one instance: checks the stored settings, proves the
+ * secret decrypts with THIS environment's key, then asks MPA for a sample
+ * domestic quote. Never returns or logs the credential.
+ */
+export async function verifyIntegration(
+  env: Env,
+  uuid: string,
+): Promise<MyParcelVerifyResult | null> {
+  const row = await integrationsRepo.findIntegration(env, uuid);
+  if (!row || row.provider !== "myparcel-asia") return null;
+
+  const host = (row.data.settings.host ?? "").trim().toLowerCase();
+  const senderPostcode = (row.data.settings.senderPostcode ?? "").trim();
+  if (!host || !(MPA_HOSTS as readonly string[]).includes(host) || !/^\d{5}$/.test(senderPostcode)) {
+    return {
+      ok: false,
+      code: "missing_settings",
+      message: "Add MyParcel Asia's host and a 5-digit sender postcode, then save.",
+    };
+  }
+
+  const envelope = row.data.secrets.apiKey;
+  if (!envelope) {
+    return {
+      ok: false,
+      code: "missing_api_key",
+      message: "No API Key is stored. Open the integration and add it.",
+    };
+  }
+
+  let apiKey: string;
+  try {
+    apiKey = await decryptSecret(env, fieldAad(row.uuid, "apiKey"), envelope);
+  } catch {
+    return {
+      ok: false,
+      code: "credential_unreadable",
+      message:
+        "The stored API Key cannot be decrypted with this environment's key. Re-enter the API Key and API Secret, then save.",
+    };
+  }
+
+  try {
+    const rates = await quoteForCredentials(
+      env,
+      { host, apiKey, senderPostcode },
+      { receiverPostcode: "50000", weightKg: 1 },
+      { skipCache: true },
+    );
+    return {
+      ok: true,
+      code: "ready",
+      message: `MyParcel Asia answered with ${rates.size} courier quote${rates.size === 1 ? "" : "s"}.`,
+      couriers: [...rates.keys()],
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      code: "provider_error",
+      message: error instanceof Error ? error.message : "MyParcel Asia rejected the request.",
+    };
+  }
 }

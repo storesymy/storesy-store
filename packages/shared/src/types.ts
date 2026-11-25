@@ -37,6 +37,15 @@ export interface ProductFulfilment {
   download: boolean;
 }
 
+/** Result of a provider setup check (currently MyParcel Asia). */
+export interface IntegrationVerifyResult {
+  ok: boolean;
+  code: string;
+  /** Safe, human-readable explanation — never a credential. */
+  message: string;
+  couriers?: string[];
+}
+
 /** A stored digital file: path to the bytes, display name, size in bytes. */
 export interface DownloadFile {
   path: string;
