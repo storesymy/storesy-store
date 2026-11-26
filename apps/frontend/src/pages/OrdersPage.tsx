@@ -1,7 +1,7 @@
 import type { Order } from "@storesy/shared";
 import { Button, Icon, Shell } from "@storesy/ui";
 import { useEffect, useState } from "react";
-import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
+import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { ApiError, api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { useAppNav } from "../lib/nav";
@@ -10,10 +10,9 @@ import { relativeTime } from "../lib/salesPages";
 import { useTheme } from "../lib/theme";
 
 /**
- * Orders — what the checkout blocks on the sales pages have taken, newest
- * first. Read-only this milestone: the payment gateway (later) is what
- * transitions a row past `pending`, so the list shows the truth and offers
- * no state editing of its own.
+ * All Orders — what the checkout blocks on the sales pages have taken, newest
+ * first. The paid-but-unfulfilled slice lives on /fulfilment. Both views are
+ * read-only lists; row actions open the order detail.
  */
 export function OrdersPage() {
   const { user, loading, logout } = useAuth();
@@ -103,7 +102,7 @@ export function OrdersPage() {
       <div className="pd">
         <header className="pd__header">
           <div>
-            <h1 className="pd__title">Orders</h1>
+            <h1 className="pd__title">All Orders</h1>
             <p className="pd__sub">
               {loadingOrders
                 ? "Loading orders…"
@@ -150,15 +149,16 @@ export function OrdersPage() {
                   <th scope="col">Status</th>
                   <th scope="col">Fulfilment</th>
                   <th scope="col">Placed</th>
+                  <th scope="col" className="pd__action">
+                    Action
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {orders.map((order) => (
                   <tr className="pd__row" key={order.id}>
                     <td>
-                      <Link className="pd__code pd__link" to={`/order/${order.id}`}>
-                        {order.orderNo}
-                      </Link>
+                      <span className="pd__code">{order.orderNo}</span>
                       {order.test ? (
                         <>
                           <br />
@@ -186,6 +186,15 @@ export function OrdersPage() {
                       </span>
                     </td>
                     <td className="pd__updated">{relativeTime(order.createdAt)}</td>
+                    <td className="pd__action">
+                      <Button
+                        variant="secondary"
+                        className="pd__manage"
+                        onClick={() => navigate(`/order/${order.id}`)}
+                      >
+                        Manage
+                      </Button>
+                    </td>
                   </tr>
                 ))}
               </tbody>

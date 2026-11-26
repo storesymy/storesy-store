@@ -34,6 +34,16 @@ export async function findLatestConnectedIntegration(
   return rows.find((row) => row.data.connected) ?? null;
 }
 
+export async function findIntegrationById(env: Env, id: number): Promise<IntegrationRow | null> {
+  const rows = await db(env)
+    .select()
+    .from(integrations)
+    .where(eq(integrations.id, id))
+    .limit(1)
+    .all();
+  return rows[0] ?? null;
+}
+
 export async function findIntegration(env: Env, uuid: string): Promise<IntegrationRow | null> {
   const rows = await db(env)
     .select()

@@ -346,6 +346,10 @@ export interface OrderShippingDetails {
   providerLabel?: string;
   /** MPA's estimate, e.g. `1-5 days`. */
   transitTime?: string;
+  /** Carrier tracking number once an AWB has been booked. */
+  trackingNo?: string;
+  /** When the label was booked — the batch group key, `YYYY-MM-DD HH:MM:SS`. */
+  awbGeneratedAt?: string;
   /** Parcel used for the quote. */
   parcel?: {
     weightKg: number;
@@ -353,6 +357,39 @@ export interface OrderShippingDetails {
     widthCm: number | null;
     heightCm: number | null;
   };
+}
+
+/** One booked AWB, per order. */
+export interface AwbShipmentResult {
+  orderId: string;
+  orderNo: string;
+  trackingNo: string | null;
+  message?: string;
+}
+
+/** One generated AWB batch, as the Batches table receives it. */
+export interface AwbBatch {
+  /** Public id, `bat-…`. */
+  id: string;
+  /** `YYYY-MM-DD HH:MM:SS` Asia/Kuala_Lumpur. */
+  date: string;
+  orderCount: number;
+  /** Distinct courier labels, e.g. `["J&T"]`. */
+  couriers: string[];
+  integrationName?: string;
+}
+
+/** Result of a bulk AWB request, safe to show in the merchant modal. */
+export interface AwbGenerateResult {
+  ok: boolean;
+  integration: "myparcel-asia";
+  integrationName?: string;
+  /** Shared booking time for the successful shipments in this batch. */
+  generatedAt?: string;
+  /** The batch written by this run, when at least one AWB succeeded. */
+  batch?: AwbBatch;
+  shipments: AwbShipmentResult[];
+  messages: string[];
 }
 
 /** An order as the merchant's list receives it. */
@@ -563,6 +600,9 @@ export const routes = {
   salesPages: `${API_BASE}/salespages`,
   orders: `${API_BASE}/orders`,
   ordersSummary: `${API_BASE}/orders/summary`,
+  ordersToProcess: `${API_BASE}/orders/to-process`,
+  fulfilmentAwb: `${API_BASE}/fulfilment/awb`,
+  fulfilmentBatches: `${API_BASE}/fulfilment/batches`,
   customers: `${API_BASE}/customers`,
   templates: `${API_BASE}/templates`,
   integrations: `${API_BASE}/integrations`,

@@ -6,6 +6,7 @@ import {
   randomEmailBody,
 } from "@storesy/shared";
 import type {
+  IntegrationField,
   IntegrationRecord,
   IntegrationProvider,
   IntegrationVerifyResult,
@@ -260,6 +261,21 @@ export function IntegrationDetailsModal({
   // The Connection/Edit form's non-name fields, IN ITS ORDER — these are the
   // rows that carry pencils (secrets included; Brand/Website/Status don't).
   const fieldRows = provider.fields.filter((field) => field.role !== "name");
+  // Account facts returned by the provider (MPA sender details): display-only,
+  // refreshed from the provider whenever the credentials are saved.
+  const profileRows = provider.profileFields ?? [];
+  // Preferences edited here, never in the connect form (MPA send method).
+  const settingsRows = provider.settingsFields ?? [];
+  const editableFields = [...settingsRows, ...provider.fields];
+
+  /** Stored preference, falling back to the catalogue default. */
+  function settingsValue(field: IntegrationField): string {
+    const stored = entry.settings[field.name];
+    if (stored !== undefined && (field.options ? field.options.includes(stored) : true)) {
+      return stored;
+    }
+    return field.options?.[0] ?? "";
+  }
 
   function startEdit(key: string, value: string) {
     setEditing({ key, value });
@@ -274,7 +290,7 @@ export function IntegrationDetailsModal({
   async function saveEdit() {
     if (!editing) return;
     const value = editing.value.trim();
-    const field = provider.fields.find((entry) => entry.name === editing.key);
+    const field = editableFields.find((entry) => entry.name === editing.key);
     if (value === "") {
       // Blank secret = "keep the stored one": nothing to write, just close.
       if (editing.key !== "name" && field?.role === "secret") {
@@ -370,6 +386,27 @@ export function IntegrationDetailsModal({
               editableValue={entry.name}
             />
             <Row {...rowProps} label="Brand" value={provider.label} />
+            {profileRows.map((field) => (
+              <Row
+                {...rowProps}
+                key={field.name}
+                label={field.label}
+                value={entry.settings[field.name] ?? "—"}
+              />
+            ))}
+            {settingsRows.map((field) => (
+              <Row
+                {...rowProps}
+                key={field.name}
+                label={field.label}
+                value={settingsValue(field)}
+                editableKey={field.name}
+                editableValue={settingsValue(field)}
+                select={field.options}
+                type={field.type}
+                placeholder={field.placeholder}
+              />
+            ))}
             {provider.auth === "google-oauth" ? (
               <>
                 <Row

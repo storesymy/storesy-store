@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import { CustomerDetailPage } from "./pages/CustomerDetailPage";
 import { CustomersPage } from "./pages/CustomersPage";
+import { FulfilmentPage } from "./pages/FulfilmentPage";
 import { HomePage } from "./pages/HomePage";
 import { IntegrationsPage } from "./pages/IntegrationsPage";
 import { LoginPage } from "./pages/LoginPage";
@@ -30,6 +31,8 @@ export function App() {
       <Route path="/product/:uuid" element={<ProductPage />} />
       {/* Orders — what the sales pages' checkout blocks have taken. */}
       <Route path="/orders" element={<OrdersPage />} />
+      {/* Fulfilment — the paid-but-unfulfilled slice of the same table. */}
+      <Route path="/fulfilment" element={<FulfilmentPage />} />
       {/* One order's detail — reached from the NO link on /orders. */}
       <Route path="/order/:uuid" element={<OrderDetailPage />} />
       {/* Shipping Zone — UI-only table + create/edit dialog (no API yet). */}

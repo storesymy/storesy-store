@@ -422,6 +422,16 @@ export const shippingQuoteSchema = z.object({
   }),
 });
 
+/** POST /api/fulfilment/awb — book labels for the selected orders. */
+export const awbGenerateSchema = z.object({
+  orderIds: z
+    .array(z.string().trim().min(1, "Choose an order"))
+    .min(1, "Select at least one order")
+    .max(50, "Up to 50 orders per batch"),
+});
+
+export type AwbGenerateInput = z.infer<typeof awbGenerateSchema>;
+
 /** PATCH /api/orders/:uuid/fulfilment — the merchant's shipping progress. */
 /**
  * Editing an automated email. Subject and message stay plain text; every

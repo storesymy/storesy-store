@@ -1,6 +1,6 @@
 import { env, SELF } from "cloudflare:test";
 import { INTEGRATION_PROVIDERS, isAdminRole } from "@storesy/shared";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   decryptSecret,
   encryptSecret,
@@ -36,6 +36,34 @@ function sharedSession(): Promise<string> {
 }
 
 const jsonHeaders = (cookie: string) => ({ "Content-Type": "application/json", Cookie: cookie });
+
+const MPA_PROFILE = {
+  sender_name: "Izwan Wahab",
+  sender_phone: "60182798114",
+  sender_email: "robotys@gmail.com",
+  sender_address_line_1: "R-05-3A, EMPORIS, PERSIARAN SURIAN,",
+  sender_address_line_2: "KOTA DAMANSARA",
+  sender_postcode: "47810",
+  sender_state: null,
+  sender_state_code: "SGR",
+};
+
+/** Intercept the outbound "/user" (me) profile call made while saving MPA. */
+function stubMpaUser(data: Record<string, unknown> = MPA_PROFILE) {
+  const calls: Array<{ url: string; body: unknown }> = [];
+  vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+    calls.push({ url: String(input), body: JSON.parse(String(init?.body ?? "{}")) });
+    return new Response(JSON.stringify({ status: true, message: "success", data }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  });
+  return calls;
+}
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 async function setRole(role: string): Promise<void> {
   await env.DB.prepare("UPDATE users SET role = ?1 WHERE email = ?2").bind(role, EMAIL).run();
@@ -78,14 +106,30 @@ describe("catalogue contract", () => {
     expect(host?.options).toEqual(["billplz.com", "billplz-sandbox.com"]);
   });
 
-  it("gives MyParcel Asia the specified fields in order", () => {
+  it("asks MyParcel Asia only for credentials, with the sender profile read-only", () => {
     const myparcel = INTEGRATION_PROVIDERS.find((provider) => provider.id === "myparcel-asia");
     expect(myparcel?.fields.map((field) => field.label)).toEqual([
       "Name",
       "Host",
-      "Sender postcode",
       "API Key",
       "API Secret",
+    ]);
+    expect(myparcel?.profileFields?.map((field) => field.label)).toEqual([
+      "Sender name",
+      "Sender phone",
+      "Sender email",
+      "Sender address",
+      "Sender postcode",
+      "Sender state",
+    ]);
+    expect(myparcel?.settingsFields).toEqual([
+      {
+        name: "defaultSendMethod",
+        label: "Default Send Method",
+        role: "config",
+        type: "select",
+        options: ["Dropoff", "Pickup"],
+      },
     ]);
     const host = myparcel?.fields.find((field) => field.name === "host");
     expect(host?.type).toBe("select");
@@ -417,7 +461,8 @@ describe("end-to-end as admin", () => {
     expect(blankSecret.status).toBe(422);
     expect(((await blankSecret.json()) as ErrorEnvelope).error.fields?.["fields.apiKey"]).toBeTruthy();
 
-    // --- MyParcel Asia: select + TWO secrets --------------------------------
+    // --- MyParcel Asia: credentials only, sender profile from `/user` ------
+    const mpaCalls = stubMpaUser();
     const myparcel = await SELF.fetch(`${ORIGIN}/api/integrations`, {
       method: "POST",
       headers: jsonHeaders(cookie),
@@ -426,7 +471,6 @@ describe("end-to-end as admin", () => {
         name: "MPA Live",
         fields: {
           host: "app.myparcelasia.com",
-          senderPostcode: "60000",
           apiKey: "mpa_key_2233",
           apiSecret: "mpa_secret_4455",
         },
@@ -434,9 +478,21 @@ describe("end-to-end as admin", () => {
     });
     expect(myparcel.status).toBe(201);
     const mpa = (await myparcel.json()) as IntegrationDto;
+    expect(mpaCalls).toEqual([
+      {
+        url: "https://app.myparcelasia.com/apiv2/user",
+        body: { api_key: "mpa_key_2233" },
+      },
+    ]);
     expect(mpa.settings).toEqual({
       host: "app.myparcelasia.com",
-      senderPostcode: "60000",
+      senderName: "Izwan Wahab",
+      senderPhone: "60182798114",
+      senderEmail: "robotys@gmail.com",
+      senderAddress: "R-05-3A, EMPORIS, PERSIARAN SURIAN, KOTA DAMANSARA",
+      senderPostcode: "47810",
+      senderState: "Selangor",
+      defaultSendMethod: "Dropoff",
     });
     expect(mpa.hints).toEqual({ apiKey: "••••2233", apiSecret: "••••4455" });
     expect(JSON.stringify(mpa)).not.toContain("mpa_secret_4455");
@@ -449,7 +505,6 @@ describe("end-to-end as admin", () => {
         name: "MPA Bad",
         fields: {
           host: "mpa.example.com",
-          senderPostcode: "60000",
           apiKey: "mpa_key_2233",
           apiSecret: "mpa_secret_4455",
         },
@@ -459,6 +514,101 @@ describe("end-to-end as admin", () => {
     expect(
       ((await badMpaHost.json()) as ErrorEnvelope).error.fields?.["fields.host"],
     ).toContain("demo.myparcelasia.com");
+    expect(mpaCalls).toHaveLength(1);
+
+    // A rejected key refuses the save and writes no row.
+    vi.stubGlobal("fetch", async () =>
+      new Response(
+        JSON.stringify({ status: false, message: [{ message: "Invalid API key" }], data: [] }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+    const badKey = await SELF.fetch(`${ORIGIN}/api/integrations`, {
+      method: "POST",
+      headers: jsonHeaders(cookie),
+      body: JSON.stringify({
+        provider: "myparcel-asia",
+        name: "MPA Bad Key",
+        fields: {
+          host: "app.myparcelasia.com",
+          apiKey: "bad_key_0000",
+          apiSecret: "mpa_secret_4455",
+        },
+      }),
+    });
+    expect(badKey.status).toBe(400);
+    const badKeyBody = (await badKey.json()) as ErrorEnvelope;
+    expect(badKeyBody.error.code).toBe("myparcel_verify_failed");
+    expect(badKeyBody.error.message).toContain("Invalid API key");
+    expect(JSON.stringify(badKeyBody)).not.toContain("mpa_secret_4455");
+    const afterBadKey = await SELF.fetch(`${ORIGIN}/api/integrations`, {
+      headers: jsonHeaders(cookie),
+    });
+    expect(
+      ((await afterBadKey.json()) as { integrations: IntegrationDto[] }).integrations.map(
+        (row) => row.name,
+      ),
+    ).not.toContain("MPA Bad Key");
+
+    // Rotating the key re-reads the profile so the sender follows the account.
+    const patchCalls = stubMpaUser({
+      ...MPA_PROFILE,
+      sender_name: "New Sender",
+      sender_postcode: "50000",
+      sender_state: "Kuala Lumpur",
+    });
+    const patchedMpa = await SELF.fetch(`${ORIGIN}/api/integrations/${mpa.uuid}`, {
+      method: "PATCH",
+      headers: jsonHeaders(cookie),
+      body: JSON.stringify({ fields: { apiKey: "mpa_key_9999" } }),
+    });
+    expect(patchedMpa.status).toBe(200);
+    const patchedMpaBody = (await patchedMpa.json()) as IntegrationDto;
+    expect(patchCalls).toEqual([
+      {
+        url: "https://app.myparcelasia.com/apiv2/user",
+        body: { api_key: "mpa_key_9999" },
+      },
+    ]);
+    expect(patchedMpaBody.settings.senderName).toBe("New Sender");
+    expect(patchedMpaBody.settings.senderPostcode).toBe("50000");
+    expect(patchedMpaBody.settings.senderState).toBe("Kuala Lumpur");
+
+    // Changing only the host reuses the stored (decrypted) key.
+    const hostCalls = stubMpaUser();
+    const patchedHost = await SELF.fetch(`${ORIGIN}/api/integrations/${mpa.uuid}`, {
+      method: "PATCH",
+      headers: jsonHeaders(cookie),
+      body: JSON.stringify({ fields: { host: "demo.myparcelasia.com" } }),
+    });
+    expect(patchedHost.status).toBe(200);
+    expect(hostCalls).toEqual([
+      {
+        url: "https://demo.myparcelasia.com/apiv2/user",
+        body: { api_key: "mpa_key_9999" },
+      },
+    ]);
+
+    // Details-only preference: editable, option-validated, persisted.
+    const sendMethod = await SELF.fetch(`${ORIGIN}/api/integrations/${mpa.uuid}`, {
+      method: "PATCH",
+      headers: jsonHeaders(cookie),
+      body: JSON.stringify({ fields: { defaultSendMethod: "Pickup" } }),
+    });
+    expect(sendMethod.status).toBe(200);
+    expect(((await sendMethod.json()) as IntegrationDto).settings.defaultSendMethod).toBe("Pickup");
+    const badSendMethod = await SELF.fetch(`${ORIGIN}/api/integrations/${mpa.uuid}`, {
+      method: "PATCH",
+      headers: jsonHeaders(cookie),
+      body: JSON.stringify({ fields: { defaultSendMethod: "Courier" } }),
+    });
+    expect(badSendMethod.status).toBe(422);
+    expect(
+      ((await badSendMethod.json()) as ErrorEnvelope).error.fields?.[
+        "fields.defaultSendMethod"
+      ],
+    ).toContain("Dropoff, Pickup");
+    stubMpaUser();
 
     // --- AWS SES: two secrets + two config values ---------------------------
     const ses = await SELF.fetch(`${ORIGIN}/api/integrations`, {

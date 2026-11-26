@@ -39,6 +39,7 @@ beforeAll(async () => {
 describe("orders summary API", () => {
   it("requires a session", async () => {
     expect((await SELF.fetch(`${ORIGIN}/api/orders/summary`)).status).toBe(401);
+    expect((await SELF.fetch(`${ORIGIN}/api/orders/to-process`)).status).toBe(401);
   });
 
   it("counts paid orders that are still unfulfilled", async () => {
@@ -54,5 +55,21 @@ describe("orders summary API", () => {
     });
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ toProcess: 2 });
+  });
+
+  it("lists only the paid-unfulfilled orders", async () => {
+    const response = await SELF.fetch(`${ORIGIN}/api/orders/to-process`, {
+      headers: { Cookie: cookie },
+    });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      orders: { status: string; fulfilment: { status: string } }[];
+    };
+    expect(body.orders).toHaveLength(2);
+    expect(
+      body.orders.every(
+        (order) => order.status === "paid" && order.fulfilment.status === "unfulfilled",
+      ),
+    ).toBe(true);
   });
 });

@@ -276,6 +276,12 @@ export interface OrderShippingData {
   };
   /** Quote time, `YYYY-MM-DD HH:MM:SS` Asia/Kuala_Lumpur. */
   quotedAt?: string;
+  /** Carrier tracking number saved after a successful AWB booking. */
+  trackingNo?: string;
+  /** Label/consignment-note URL returned by the provider, when present. */
+  awbUrl?: string;
+  /** `YYYY-MM-DD HH:MM:SS` Asia/Kuala_Lumpur. */
+  awbGeneratedAt?: string;
 }
 
 export interface OrderData {
@@ -432,6 +438,11 @@ export const orders = sqliteTable(
     customerId: integer("customer_id"),
     /** The shipping/contact profile used for this order, indexed. */
     customerContactId: integer("customer_contact_id"),
+    /**
+     * The AWB batch this order was booked in — `batches.id`. Null until a
+     * label is generated; one order can only belong to one batch.
+     */
+    batchId: integer("batch_id"),
     /** `pending` until the gateway confirms the money; then `paid`. */
     status: text("status").notNull().default("pending"),
     /** Non-indexed model fields — see OrderData. */
@@ -442,6 +453,7 @@ export const orders = sqliteTable(
     index("orders_page_idx").on(table.salesPageId),
     index("orders_customer_idx").on(table.customerId),
     index("orders_contact_idx").on(table.customerContactId),
+    index("orders_batch_idx").on(table.batchId),
     index("orders_status_idx").on(table.status),
     check("orders_data_json", sql`json_valid(${table.data})`),
   ],
@@ -449,6 +461,43 @@ export const orders = sqliteTable(
 
 export type OrderRow = typeof orders.$inferSelect;
 export type NewOrderRow = typeof orders.$inferInsert;
+
+/**
+ * One successful Generate AWB run. Membership lives on `orders.batch_id`;
+ * the data below is an immutable snapshot of what the merchant saw when the
+ * batch was created, so the Batches table needs no per-row aggregates.
+ */
+export interface BatchData {
+  /** KL date-time the AWBs were generated. */
+  createdAt: string;
+  /** `integrations.id` of the MyParcel Asia account used. */
+  integrationId?: number;
+  /** Merchant label of that account at booking time. */
+  integrationName?: string;
+  /** Successfully booked orders in this run. */
+  orderCount: number;
+  /** Distinct courier labels, e.g. `["J&T"]`. */
+  courierLabels: string[];
+}
+
+export const batches = sqliteTable(
+  "batches",
+  {
+    /** Internal row identifier: bigint autoincrement primary key. */
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    /** Public identifier: prefixed UUIDv7, e.g. `bat-0199f3c2-…`. */
+    uuid: text("uuid").notNull(),
+    /** Non-indexed model fields — see BatchData. */
+    data: text("data", { mode: "json" }).$type<BatchData>().notNull(),
+  },
+  (table) => [
+    uniqueIndex("batches_uuid_unique").on(table.uuid),
+    check("batches_data_json", sql`json_valid(${table.data})`),
+  ],
+);
+
+export type BatchRow = typeof batches.$inferSelect;
+export type NewBatchRow = typeof batches.$inferInsert;
 
 /**
  * Everything about an integration that isn't `name` or the indexed

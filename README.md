@@ -68,6 +68,7 @@ sales-page documents) to the Worker, so cookies are same-origin.
 | POST | `/api/public/orders` | Place an order from a sales page's checkout — signed out, rate-limited, prices and shipping revalidated server-side → `201` / `404` / `409` / `422` / `429` |
 | GET | `/api/orders` | Merchant's orders, newest first (`?page=spg_…` narrows to one page) |
 | GET | `/api/orders/summary` | `{ toProcess }` — paid orders still unfulfilled, used by the sidebar badge |
+| GET | `/api/orders/to-process` | Paid-but-unfulfilled orders, full list shape, for `/fulfilment` |
 | GET | `/api/integrations` | Integration instances — **admin-only** (`401`/`403`); reads carry masked hints (`••••1234`), never a secret |
 | POST | `/api/integrations` | Create = connect: provider + name + fields validated against the shared catalogue; secrets AES-GCM encrypted at rest → `201` / `422` |
 | PATCH | `/api/integrations/:uuid` | Rename / rotate credentials / update config — omitted keys stay unchanged (blank secrets are refused) → `200` / `404` / `422` |
@@ -212,8 +213,10 @@ Live rate rules:
   (`L×W×H/5000`) per unit, summed over the cart. Missing weight **and**
   dimensions blocks API pricing; a configured flat row in the same zone can
   still be used.
-- MyParcel Asia needs a connected integration with a **sender postcode**.
-  Without it, API-only zones are refused.
+- MyParcel Asia needs a connected integration. Saving the connection reads the
+  account's **sender name, phone, email, address, postcode and state** from
+  MPA's `/user` profile; API-only zones and AWB booking use those saved
+  details. Without them, API-only zones are refused.
 - A provider failure is refused — it never silently falls back to a broader
   flat rate. A flat row in the same zone is a valid alternative.
 - With no active zones at all, the legacy RM10.00 flat keeps an unconfigured
@@ -235,11 +238,22 @@ integration: it proves the stored API key decrypts with this environment's
 key cannot be recovered — re-enter the API Key and API Secret, then save.
 
 Orders land as `pending` rows; the merchant reads them at
-`GET /api/orders` (sidebar → Orders). The sidebar's **Orders** item carries a
-red count of paid-but-unfulfilled orders; it refreshes on navigation, after a
-fulfilment change, when the tab becomes visible, and on a 60-second poll.
-Imported/complete documents ship untouched — no checkout is injected into
-them.
+`GET /api/orders` (sidebar → **All Orders**). The sidebar's **Order to Process**
+item carries a red count of paid-but-unfulfilled orders and opens
+`/fulfilment`, the fulfilment queue. That table has **Pending / Selected /
+Batches** views and shows NO, Customer, Send To (state for Malaysia, country
+elsewhere), Courier, Quantity (`3 items`), Total KG, and Add to Selected.
+Adding an order moves it from Pending into Selected; the Selected tab carries
+a black count of the staged orders and reveals the **Generate AWB** action at
+the far right of the tab row. Total KG comes from the shipment snapshot's
+parcel (flat/legacy orders without one show `—`). A successful Generate AWB
+saves each tracking number, marks the shipment **fulfilled**, and writes one
+**batch**; the Batches tab carries a black batch count and lists Date, Total
+Order, Courier and a Print AWB action that opens MyParcel Asia's combined
+consignment-note PDF for the batch in a new tab.
+The count refreshes on navigation, after a fulfilment change, when the tab
+becomes visible, and on a 60-second poll. Imported/complete documents ship
+untouched — no checkout is injected into them.
 
 ## Repo policies
 

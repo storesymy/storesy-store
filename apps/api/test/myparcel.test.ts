@@ -1,7 +1,10 @@
 import { env, SELF } from "cloudflare:test";
-import { beforeAll, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   MyParcelError,
+  fetchSenderProfile,
+  getConsignmentNote,
+  normalizeMpaSendMethod,
   normalizeProviderCode,
   parseMpaRates,
   quoteRates,
@@ -67,7 +70,41 @@ beforeAll(async () => {
   cookie = await signup();
 });
 
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+/** Saving the connection reads the account profile before it is stored. */
+function stubMpaProfile(): void {
+  vi.stubGlobal("fetch", async () =>
+    new Response(
+      JSON.stringify({
+        status: true,
+        message: "success",
+        data: {
+          sender_name: "Storesy",
+          sender_phone: "0123456789",
+          sender_email: "hello@storesy.my",
+          sender_address_line_1: "12 Jalan Merdeka",
+          sender_postcode: "60000",
+          sender_state: "Selangor",
+        },
+      }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    ),
+  );
+}
+
 describe("MyParcel Asia rate parsing", () => {
+  it("normalises the saved send-method label to MPA's lowercase value", () => {
+    expect(normalizeMpaSendMethod("Dropoff")).toBe("dropoff");
+    expect(normalizeMpaSendMethod("Pickup")).toBe("pickup");
+    expect(normalizeMpaSendMethod("pickup")).toBe("pickup");
+    expect(normalizeMpaSendMethod(undefined)).toBe("dropoff");
+    expect(normalizeMpaSendMethod("")).toBe("dropoff");
+    expect(normalizeMpaSendMethod("courier")).toBe("dropoff");
+  });
+
   it("normalises provider codes", () => {
     expect(normalizeProviderCode("J&T")).toBe("jnt");
     expect(normalizeProviderCode("J&T Express")).toBe("jnt");
@@ -118,8 +155,89 @@ describe("MyParcel Asia rate parsing", () => {
   });
 });
 
+describe("MyParcel Asia account profile", () => {
+  const profileBody = {
+    status: true,
+    message: "success",
+    data: {
+      sender_name: "Izwan Wahab",
+      sender_phone: "60182798114",
+      sender_email: "robotys@gmail.com",
+      sender_address_line_1: "R-05-3A, EMPORIS, PERSIARAN SURIAN,",
+      sender_address_line_2: "KOTA DAMANSARA",
+      sender_address_line_3: null,
+      sender_address_line_4: null,
+      sender_postcode: "47810",
+      sender_state: null,
+      sender_state_code: "SGR",
+    },
+  };
+
+  it("reads the sender identity from /user and joins the address lines", async () => {
+    let seenUrl = "";
+    let seenInit: RequestInit | undefined;
+    const profile = await fetchSenderProfile("app.myparcelasia.com", "mpa_key", {
+      fetchImpl: async (input, init) => {
+        seenUrl = String(input);
+        seenInit = init;
+        return new Response(JSON.stringify(profileBody), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      },
+    });
+
+    expect(seenUrl).toBe("https://app.myparcelasia.com/apiv2/user");
+    expect(seenInit?.method).toBe("POST");
+    expect(JSON.parse(String(seenInit?.body))).toEqual({ api_key: "mpa_key" });
+    expect(profile).toEqual({
+      name: "Izwan Wahab",
+      phone: "60182798114",
+      email: "robotys@gmail.com",
+      address: "R-05-3A, EMPORIS, PERSIARAN SURIAN, KOTA DAMANSARA",
+      postcode: "47810",
+      state: "Selangor",
+    });
+  });
+
+  it("surfaces MPA's rejection without echoing the key", async () => {
+    await expect(
+      fetchSenderProfile("app.myparcelasia.com", "secret_key_1234", {
+        fetchImpl: async () =>
+          new Response(
+            JSON.stringify({
+              status: false,
+              message: [{ message: "Invalid API key" }],
+              data: [],
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          ),
+      }),
+    ).rejects.toMatchObject({
+      code: "invalid_response",
+      message: "MyParcel Asia rejected the API Key: Invalid API key",
+    });
+  });
+
+  it("refuses a profile without a 5-digit sender postcode", async () => {
+    await expect(
+      fetchSenderProfile("app.myparcelasia.com", "mpa_key", {
+        fetchImpl: async () =>
+          new Response(
+            JSON.stringify({
+              ...profileBody,
+              data: { ...profileBody.data, sender_postcode: null },
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          ),
+      }),
+    ).rejects.toMatchObject({ code: "invalid_response" });
+  });
+});
+
 describe("MyParcel Asia request", () => {
   it("posts the documented v3 body with the stored sender postcode", async () => {
+    stubMpaProfile();
     const created = await SELF.fetch(`${ORIGIN}/api/integrations`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Cookie: cookie },
@@ -128,7 +246,6 @@ describe("MyParcel Asia request", () => {
         name: "MPA Test",
         fields: {
           host: "app.myparcelasia.com",
-          senderPostcode: "60000",
           apiKey: "mpa_test_key",
           apiSecret: "mpa_test_secret",
         },
@@ -168,6 +285,44 @@ describe("MyParcel Asia request", () => {
     expect(result.integrationId).toBeGreaterThan(0);
     expect(result.rates.get("jnt")?.priceCents).toBe(720);
     expect(result.rates.get("jnt")?.providerLabel).toBe("J&T Express");
+  });
+
+  it("downloads one combined consignment-note PDF for the tracking numbers", async () => {
+    let seenBody: Record<string, unknown> | undefined;
+    const pdf = new TextEncoder().encode("%PDF-1.3\ncombined labels");
+    const bytes = await getConsignmentNote(
+      env,
+      undefined,
+      ["632218977105", " 632217010920 ", "632218977105"],
+      {
+        fetchImpl: async (_input, init) => {
+          seenBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+          return new Response(pdf, {
+            status: 200,
+            headers: { "Content-Type": "application/pdf" },
+          });
+        },
+      },
+    );
+
+    expect(seenBody?.tracking_no).toEqual(["632218977105", "632217010920"]);
+    expect(seenBody?.api_key).toBe("mpa_test_key");
+    expect(new TextDecoder().decode(new Uint8Array(bytes).slice(0, 5))).toBe("%PDF-");
+  });
+
+  it("turns a non-PDF label answer into a readable error", async () => {
+    await expect(
+      getConsignmentNote(env, undefined, ["632218977105"], {
+        fetchImpl: async () =>
+          new Response(JSON.stringify({ status: false, message: "Shipment not found" }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          }),
+      }),
+    ).rejects.toMatchObject({
+      code: "invalid_response",
+      message: /Shipment not found/,
+    });
   });
 
   it("serves a second identical quote from KV without calling MPA", async () => {

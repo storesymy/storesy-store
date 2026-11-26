@@ -27,10 +27,16 @@ export function buildNav(
     },
     { label: "Products", icon: "products", href: "/products", active: pathname === "/products" },
     {
-      label: "Orders",
+      label: "All Orders",
       icon: "orders",
       href: "/orders",
       active: pathname === "/orders" || pathname.startsWith("/order/"),
+    },
+    {
+      label: "Order to Process",
+      icon: "orders",
+      href: "/fulfilment",
+      active: pathname === "/fulfilment",
       count: ordersToProcess,
     },
     {

@@ -66,6 +66,14 @@ export function buildRouter(): Router {
     .get("/api/orders", orders.list)
     // The sidebar badge: paid orders still to fulfil (cheap count, no joins).
     .get("/api/orders/summary", orders.summary)
+    // The /fulfilment table: the same filter with the full list shape.
+    .get("/api/orders/to-process", orders.toProcess)
+    // AWB booking for the selected fulfilled queue (real MyParcel Asia labels).
+    .post("/api/fulfilment/awb", orders.generateAwb)
+    // The batches created by successful AWB runs.
+    .get("/api/fulfilment/batches", orders.listBatches)
+    // One combined MyParcel Asia consignment-note PDF for the batch.
+    .get("/api/fulfilment/batches/:uuid/print_label", orders.printBatchLabel)
     // One order's detail, and the merchant's fulfilment action.
     .get("/api/orders/:uuid", orders.detail)
     .patch("/api/orders/:uuid/fulfilment", orders.fulfilment)

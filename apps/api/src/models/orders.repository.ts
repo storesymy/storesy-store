@@ -1,4 +1,4 @@
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import type { ContactData, CustomerRow, NewOrderRow, OrderData, OrderRow } from "./schema";
 import { customerContacts, customers, orders, salesPages } from "./schema";
@@ -111,16 +111,30 @@ function shape(row: JoinedRow): OrderWithPage {
  * returned: the merchant's list is the full history, and the optional rowid
  * filter narrows it to one sales page in SQL (never a post-fetch slice).
  */
-export async function listOrders(env: Env, pageId?: number): Promise<OrderWithPage[]> {
+export async function listOrders(
+  env: Env,
+  pageId?: number,
+  toProcess = false,
+): Promise<OrderWithPage[]> {
   const base = db(env)
     .select(selected)
     .from(orders)
     .leftJoin(salesPages, eq(orders.salesPageId, salesPages.id))
     .leftJoin(customers, eq(orders.customerId, customers.id))
     .leftJoin(customerContacts, eq(orders.customerContactId, customerContacts.id));
-  const rows = await (pageId === undefined ? base : base.where(eq(orders.salesPageId, pageId)))
-    .orderBy(desc(orders.id))
-    .all();
+  const paidUnfulfilled = and(
+    eq(orders.status, "paid"),
+    sql`COALESCE(json_extract(${orders.data}, '$.fulfilment.status'), 'unfulfilled') = 'unfulfilled'`,
+  );
+  const where =
+    pageId !== undefined && toProcess
+      ? and(eq(orders.salesPageId, pageId), paidUnfulfilled)
+      : pageId !== undefined
+        ? eq(orders.salesPageId, pageId)
+        : toProcess
+          ? paidUnfulfilled
+          : undefined;
+  const rows = await (where ? base.where(where) : base).orderBy(desc(orders.id)).all();
   return rows.map((row) => shape(row as JoinedRow));
 }
 
@@ -147,17 +161,31 @@ export async function findOrderByUuid(env: Env, uuid: string): Promise<OrderWith
   return shape(row as JoinedRow);
 }
 
+/** Tracking numbers belonging to one AWB batch, in order order. */
+export async function listTrackingNosForBatch(env: Env, batchId: number): Promise<string[]> {
+  const rows = await db(env)
+    .select({ data: orders.data })
+    .from(orders)
+    .where(eq(orders.batchId, batchId))
+    .orderBy(orders.id)
+    .all();
+  return rows
+    .map((row) => row.data.shipping?.trackingNo?.trim() ?? "")
+    .filter((trackingNo) => trackingNo !== "");
+}
+
 /** Lifecycle writes: status flips and the data blob (payment pointer, paidAt). */
 export async function updateOrder(
   env: Env,
   id: number,
-  values: { status?: string; data?: OrderData },
+  values: { status?: string; data?: OrderData; batchId?: number | null },
 ): Promise<OrderRow> {
   const updated = await db(env)
     .update(orders)
     .set({
       ...(values.status !== undefined ? { status: values.status } : {}),
       ...(values.data !== undefined ? { data: values.data } : {}),
+      ...(values.batchId !== undefined ? { batchId: values.batchId } : {}),
     })
     .where(eq(orders.id, id))
     .returning()

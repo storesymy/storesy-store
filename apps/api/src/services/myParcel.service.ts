@@ -37,14 +37,34 @@ export const MPA_HOSTS = ["app.myparcelasia.com", "demo.myparcelasia.com"] as co
 // official WooCommerce plugin allows 45s. 20s keeps checkout responsive
 // without aborting a legitimate quote.
 const MPA_TIMEOUT_MS = 20_000;
+const MPA_AWB_TIMEOUT_MS = 30_000;
 const QUOTE_CACHE_TTL_SECONDS = 300;
+
+export type MpaSendMethod = "dropoff" | "pickup";
+
+/**
+ * MPA accepts lowercase `dropoff`/`pickup`; the details modal stores the label
+ * (`Dropoff`/`Pickup`) and older rows have nothing at all. Anything unknown
+ * falls back to the connection default, Dropoff.
+ */
+export function normalizeMpaSendMethod(value: unknown): MpaSendMethod {
+  return String(value ?? "").trim().toLowerCase() === "pickup" ? "pickup" : "dropoff";
+}
 
 export interface MpaCredentials {
   /** `integrations.id` — the account this quote came from. */
   integrationId: number;
+  /** Merchant label, e.g. `LIVE Robotys` (never a secret). */
+  integrationName: string;
   host: string;
   apiKey: string;
   senderPostcode: string;
+  senderName?: string;
+  senderPhone?: string;
+  senderEmail?: string;
+  senderAddress?: string;
+  /** Preference saved in Connection details; already lowercase for MPA. */
+  defaultSendMethod: MpaSendMethod;
 }
 
 /** One courier/service quote from `check_price`. */
@@ -63,23 +83,333 @@ export interface MpaQuoteResult {
   rates: Map<string, MpaRate>;
 }
 
-/** The connected MPA account, or null when setup is incomplete. */
-export async function mpaCredentials(env: Env): Promise<MpaCredentials | null> {
-  const row = await integrationsRepo.findLatestConnectedIntegration(env, "myparcel-asia");
-  if (!row) return null;
-
-  const host = (row.data.settings.host ?? "").trim().toLowerCase();
-  const senderPostcode = (row.data.settings.senderPostcode ?? "").trim();
+async function credentialsFromRow(
+  env: Env,
+  row: import("../models/schema").IntegrationRow,
+): Promise<MpaCredentials | null> {
+  const settings = row.data.settings;
+  const host = (settings.host ?? "").trim().toLowerCase();
+  const senderPostcode = (settings.senderPostcode ?? "").trim();
   const envelope = row.data.secrets.apiKey;
   if (!host || !envelope || !/^\d{5}$/.test(senderPostcode)) return null;
   if (!(MPA_HOSTS as readonly string[]).includes(host)) return null;
 
   try {
     const apiKey = await decryptSecret(env, fieldAad(row.uuid, "apiKey"), envelope);
-    return apiKey ? { integrationId: row.id, host, apiKey, senderPostcode } : null;
+    if (!apiKey) return null;
+    return {
+      integrationId: row.id,
+      integrationName: row.name,
+      host,
+      apiKey,
+      senderPostcode,
+      ...(settings.senderName ? { senderName: settings.senderName } : {}),
+      ...(settings.senderPhone ? { senderPhone: settings.senderPhone } : {}),
+      ...(settings.senderEmail ? { senderEmail: settings.senderEmail } : {}),
+      ...(settings.senderAddress ? { senderAddress: settings.senderAddress } : {}),
+      defaultSendMethod: normalizeMpaSendMethod(settings.defaultSendMethod),
+    };
   } catch {
     return null;
   }
+}
+
+/** The connected MPA account, or null when setup is incomplete. */
+export async function mpaCredentials(env: Env): Promise<MpaCredentials | null> {
+  const row = await integrationsRepo.findLatestConnectedIntegration(env, "myparcel-asia");
+  return row ? credentialsFromRow(env, row) : null;
+}
+
+/** One specific MPA account — used by AWB booking so history stays on the quote's account. */
+export async function mpaCredentialsForIntegration(
+  env: Env,
+  integrationId: number,
+): Promise<MpaCredentials | null> {
+  const row = await integrationsRepo.findIntegrationById(env, integrationId);
+  if (!row || row.provider !== "myparcel-asia" || !row.data.connected) return null;
+  return credentialsFromRow(env, row);
+}
+
+/** One shipment in the v2 bulk-AWB request. */
+export type MpaAwbShipment = Record<string, unknown>;
+
+/**
+ * Book labels through MyParcel Asia's v2 bulk endpoint. The v3 host does not
+ * expose this path; the response is returned raw for the caller to interpret.
+ */
+export async function createBulkAwb(
+  env: Env,
+  integrationId: number,
+  shipments: MpaAwbShipment[],
+  options: { fetchImpl?: MpaFetch } = {},
+): Promise<unknown> {
+  const credentials = await mpaCredentialsForIntegration(env, integrationId);
+  if (!credentials) {
+    throw new MyParcelError(
+      "not_configured",
+      "MyParcel Asia is missing a readable API key or sender postcode",
+    );
+  }
+
+  const doFetch = options.fetchImpl ?? fetch;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), MPA_AWB_TIMEOUT_MS);
+  let response: Response;
+  try {
+    response = await doFetch(`https://${credentials.host}/apiv2/create_bulk_awb`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        "User-Agent": "Storesy/1.0 (+https://storesy.my)",
+      },
+      body: JSON.stringify({ api_key: credentials.apiKey, shipments }),
+      signal: controller.signal,
+    });
+  } catch (error) {
+    throw new MyParcelError(
+      "request_failed",
+      error instanceof Error ? error.message : "MyParcel Asia AWB request failed",
+    );
+  } finally {
+    clearTimeout(timer);
+  }
+
+  if (!response.ok) {
+    throw new MyParcelError("request_failed", `MyParcel Asia answered ${response.status}`);
+  }
+  try {
+    return await response.json();
+  } catch {
+    throw new MyParcelError("invalid_response", "MyParcel Asia answered with invalid JSON");
+  }
+}
+
+/**
+ * Download the consignment note(s) for these tracking numbers as one PDF.
+ * MPA's `/apiv2/get_consignment_note` combines every tracking number in the
+ * request into a single document, which is what the Print AWB tab opens.
+ */
+export async function getConsignmentNote(
+  env: Env,
+  integrationId: number | null | undefined,
+  trackingNos: string[],
+  options: { fetchImpl?: MpaFetch } = {},
+): Promise<ArrayBuffer> {
+  const unique = [...new Set(trackingNos.map((value) => value.trim()).filter(Boolean))];
+  if (unique.length === 0) {
+    throw new MyParcelError("invalid_response", "This batch has no tracking numbers to print");
+  }
+
+  let credentials =
+    integrationId !== null && integrationId !== undefined
+      ? await mpaCredentialsForIntegration(env, integrationId)
+      : null;
+  credentials ??= await mpaCredentials(env);
+  if (!credentials) {
+    throw new MyParcelError(
+      "not_configured",
+      "MyParcel Asia is missing a readable API key or sender postcode",
+    );
+  }
+
+  const doFetch = options.fetchImpl ?? fetch;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), MPA_AWB_TIMEOUT_MS);
+  let response: Response;
+  try {
+    response = await doFetch(`https://${credentials.host}/apiv2/get_consignment_note`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/pdf",
+        "User-Agent": "Storesy/1.0 (+https://storesy.my)",
+      },
+      body: JSON.stringify({ api_key: credentials.apiKey, tracking_no: unique }),
+      signal: controller.signal,
+    });
+  } catch (error) {
+    throw new MyParcelError(
+      "request_failed",
+      error instanceof Error ? error.message : "MyParcel Asia label request failed",
+    );
+  } finally {
+    clearTimeout(timer);
+  }
+
+  if (!response.ok) {
+    throw new MyParcelError("request_failed", `MyParcel Asia answered ${response.status}`);
+  }
+
+  const bytes = await response.arrayBuffer();
+  const head = new TextDecoder().decode(new Uint8Array(bytes).slice(0, 5));
+  const contentType = response.headers.get("content-type") ?? "";
+  if (contentType.includes("application/pdf") || head.startsWith("%PDF")) {
+    return bytes;
+  }
+
+  const text = new TextDecoder().decode(new Uint8Array(bytes).slice(0, 400));
+  throw new MyParcelError(
+    "invalid_response",
+    text
+      ? `MyParcel Asia could not print these labels: ${text.replace(/\s+/g, " ").trim()}`
+      : "MyParcel Asia could not print these labels",
+  );
+}
+
+/** The sender identity MyParcel Asia returns for an API key. */
+export interface MpaSenderProfile {
+  name: string;
+  phone: string;
+  email: string;
+  address: string;
+  postcode: string;
+  state: string;
+}
+
+/** MPA's Malaysian state codes → the names the merchant recognises. */
+const MPA_STATE_NAMES: Record<string, string> = {
+  JHR: "Johor",
+  KDH: "Kedah",
+  KTN: "Kelantan",
+  KUL: "Kuala Lumpur",
+  LBN: "Labuan",
+  MLK: "Melaka",
+  NSN: "Negeri Sembilan",
+  PHG: "Pahang",
+  PJY: "Putrajaya",
+  PLS: "Perlis",
+  PNG: "Pulau Pinang",
+  PRK: "Perak",
+  SBH: "Sabah",
+  SGR: "Selangor",
+  SWK: "Sarawak",
+  TRG: "Terengganu",
+};
+
+function profileText(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function profileMessage(value: unknown): string {
+  if (typeof value === "string") return value.trim();
+  if (Array.isArray(value)) {
+    return value
+      .map((entry) => {
+        if (typeof entry === "string") return entry;
+        if (entry && typeof entry === "object" && "message" in entry) {
+          return profileText((entry as { message?: unknown }).message);
+        }
+        return "";
+      })
+      .filter(Boolean)
+      .join(" ");
+  }
+  if (value && typeof value === "object" && "message" in value) {
+    return profileMessage((value as { message?: unknown }).message);
+  }
+  return "";
+}
+
+/**
+ * Read the sender identity behind an API key. MyParcel Asia calls this the
+ * account "me" profile; its HTTP path is `/apiv2/user`. Used when a connection
+ * is saved so the merchant never types the sender details by hand.
+ */
+export async function fetchSenderProfile(
+  host: string,
+  apiKey: string,
+  options: { fetchImpl?: MpaFetch } = {},
+): Promise<MpaSenderProfile> {
+  const normalizedHost = host.trim().toLowerCase();
+  const key = apiKey.trim();
+  if (!(MPA_HOSTS as readonly string[]).includes(normalizedHost)) {
+    throw new MyParcelError("not_configured", "Choose a supported MyParcel Asia host");
+  }
+  if (!key) {
+    throw new MyParcelError("not_configured", "An API Key is required");
+  }
+
+  const doFetch = options.fetchImpl ?? fetch;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), MPA_TIMEOUT_MS);
+  let response: Response;
+  try {
+    response = await doFetch(`https://${normalizedHost}/apiv2/user`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        "User-Agent": "Storesy/1.0 (+https://storesy.my)",
+      },
+      body: JSON.stringify({ api_key: key }),
+      signal: controller.signal,
+    });
+  } catch (error) {
+    throw new MyParcelError(
+      "request_failed",
+      error instanceof Error ? error.message : "MyParcel Asia profile request failed",
+    );
+  } finally {
+    clearTimeout(timer);
+  }
+
+  if (!response.ok) {
+    throw new MyParcelError("request_failed", `MyParcel Asia answered ${response.status}`);
+  }
+
+  let body: unknown;
+  try {
+    body = await response.json();
+  } catch {
+    throw new MyParcelError("invalid_response", "MyParcel Asia answered with invalid JSON");
+  }
+
+  const root = (body ?? {}) as { status?: unknown; message?: unknown; data?: unknown };
+  if (root.status === false) {
+    const reason = profileMessage(root.message);
+    throw new MyParcelError(
+      "invalid_response",
+      reason
+        ? `MyParcel Asia rejected the API Key: ${reason}`
+        : "MyParcel Asia rejected the API Key",
+    );
+  }
+
+  const rawData = root.data;
+  if (!rawData || typeof rawData !== "object" || Array.isArray(rawData)) {
+    throw new MyParcelError("invalid_response", "MyParcel Asia returned no account profile");
+  }
+  const data = rawData as Record<string, unknown>;
+
+  const addressLines = [
+    profileText(data.sender_address_line_1),
+    profileText(data.sender_address_line_2),
+    profileText(data.sender_address_line_3),
+    profileText(data.sender_address_line_4),
+  ]
+    .map((line) => line.replace(/[,\s]+$/, ""))
+    .filter(Boolean);
+  const address = profileText(data.sender_address) || addressLines.join(", ");
+  const name =
+    profileText(data.sender_name) ||
+    profileText(data.fullname) ||
+    profileText(data.username);
+  const phone = profileText(data.sender_phone) || profileText(data.phone);
+  const email = profileText(data.sender_email) || profileText(data.email);
+  const postcode = profileText(data.sender_postcode);
+  const rawState =
+    profileText(data.sender_state) || profileText(data.sender_state_code);
+  const state = rawState ? (MPA_STATE_NAMES[rawState.toUpperCase()] ?? rawState) : "";
+
+  if (!name || !phone || !email || !address || !/^\d{5}$/.test(postcode)) {
+    throw new MyParcelError(
+      "invalid_response",
+      "MyParcel Asia returned incomplete sender details (name, phone, email, address and 5-digit postcode are required).",
+    );
+  }
+
+  return { name, phone, email, address, postcode, state };
 }
 
 /** Provider code → our courier key. `J&T` normalises via the alias table. */
@@ -329,7 +659,7 @@ export async function verifyIntegration(
     return {
       ok: false,
       code: "missing_settings",
-      message: "Add MyParcel Asia's host and a 5-digit sender postcode, then save.",
+      message: "Save the MyParcel Asia connection again so Storesy can load the sender profile.",
     };
   }
 
@@ -357,7 +687,16 @@ export async function verifyIntegration(
   try {
     const result = await quoteForCredentials(
       env,
-      { integrationId: row.id, host, apiKey, senderPostcode },
+      {
+        integrationId: row.id,
+        integrationName: row.name,
+        host,
+        apiKey,
+        senderPostcode,
+        defaultSendMethod: normalizeMpaSendMethod(
+          row.data.settings.defaultSendMethod,
+        ),
+      },
       { receiverPostcode: "50000", weightKg: 1 },
       { skipCache: true },
     );

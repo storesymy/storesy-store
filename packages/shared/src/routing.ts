@@ -44,6 +44,7 @@ export const RESERVED_SLUGS = [
   "product", // heads /product/:uuid
   "orders",
   "order", // heads /order/:uuid
+  "fulfilment",
   "shipping-zone",
   "customers",
   "customer", // heads /customer/:uuid

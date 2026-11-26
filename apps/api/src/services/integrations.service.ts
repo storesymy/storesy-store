@@ -13,6 +13,7 @@ import type { IntegrationData, IntegrationRow } from "../models/schema";
 import * as repo from "../models/integrations.repository";
 import { sendIntegrationEmail } from "./email.service";
 import { decryptSecret, encryptSecret, fieldAad, secretHint } from "./integrations.crypto";
+import * as myParcel from "./myParcel.service";
 import { entityUuid } from "./uuid";
 import { klNow } from "./time";
 
@@ -42,6 +43,37 @@ function toDto(row: IntegrationRow): IntegrationDto {
     hints: { ...data.hints },
     addedAt: data.createdAt,
   };
+}
+
+/**
+ * Save the account profile MyParcel Asia returns for these credentials onto
+ * the row's plaintext settings. The merchant gives only the API key; name,
+ * phone, email, address, postcode and state come from MPA's `/user` ("me")
+ * endpoint and are what AWB booking later sends as the sender.
+ */
+async function applyMpaProfile(
+  settings: Record<string, string>,
+  host: string,
+  apiKey: string,
+): Promise<void> {
+  try {
+    const profile = await myParcel.fetchSenderProfile(host, apiKey);
+    settings.senderName = profile.name;
+    settings.senderPhone = profile.phone;
+    settings.senderEmail = profile.email;
+    settings.senderAddress = profile.address;
+    settings.senderPostcode = profile.postcode;
+    settings.senderState = profile.state;
+  } catch (error) {
+    const reason =
+      error instanceof Error ? error.message.replace(/\.+$/, "") : "";
+    throw badRequest(
+      "myparcel_verify_failed",
+      reason
+        ? `MyParcel Asia could not verify this connection. ${reason}.`
+        : "MyParcel Asia could not verify this connection.",
+    );
+  }
 }
 
 export async function list(env: Env): Promise<IntegrationDto[]> {
@@ -92,12 +124,18 @@ export async function create(env: Env, input: CreateInput): Promise<IntegrationD
     }
   }
 
-  if (provider.id === "myparcel-asia" && !/^\d{5}$/.test(settings.senderPostcode ?? "")) {
-    issues["fields.senderPostcode"] = "Enter a 5-digit sender postcode.";
-  }
-
   if (Object.keys(issues).length > 0) {
     throw validationFailed("Check the highlighted fields", issues);
+  }
+
+  // Details-only preferences start at their catalogue default (MPA: Dropoff).
+  for (const field of provider.settingsFields ?? []) {
+    const fallback = field.options?.[0];
+    if (fallback !== undefined) settings[field.name] = fallback;
+  }
+
+  if (provider.id === "myparcel-asia") {
+    await applyMpaProfile(settings, settings.host ?? "", input.fields.apiKey ?? "");
   }
 
   const now = klNow();
@@ -201,7 +239,9 @@ export async function update(
     // Precise per-row key check: the row's own provider decides what is legal.
     const issues: Record<string, string> = {};
     for (const [key, raw] of Object.entries(input.fields)) {
-      const field = provider.fields.find((entry) => entry.name === key);
+      const field =
+        provider.fields.find((entry) => entry.name === key) ??
+        provider.settingsFields?.find((entry) => entry.name === key);
       if (!field) {
         issues[`fields.${key}`] = `${provider.label} has no field "${key}".`;
         continue;
@@ -222,11 +262,33 @@ export async function update(
         data.hints[key] = secretHint(value);
       }
     }
-    if (row.provider === "myparcel-asia" && !/^\d{5}$/.test(data.settings.senderPostcode ?? "")) {
-      issues["fields.senderPostcode"] = "Enter a 5-digit sender postcode.";
-    }
     if (Object.keys(issues).length > 0) {
       throw validationFailed("Check the highlighted fields", issues);
+    }
+
+    // A new host or API key means a different MPA account is answering: ask
+    // for its profile again so the sender details can never drift from the
+    // credentials that will book the AWBs.
+    if (
+      row.provider === "myparcel-asia" &&
+      (input.fields.host !== undefined || input.fields.apiKey !== undefined)
+    ) {
+      let apiKey = (input.fields.apiKey ?? "").trim();
+      if (!apiKey) {
+        try {
+          apiKey = await decryptSecret(
+            env,
+            fieldAad(row.uuid, "apiKey"),
+            data.secrets.apiKey ?? "",
+          );
+        } catch {
+          throw badRequest(
+            "credential_unreadable",
+            "The stored API Key cannot be decrypted. Re-enter the API Key, then save.",
+          );
+        }
+      }
+      await applyMpaProfile(data.settings, data.settings.host ?? "", apiKey);
     }
   }
 

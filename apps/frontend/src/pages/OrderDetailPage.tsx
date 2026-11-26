@@ -281,6 +281,12 @@ export function OrderDetailPage() {
                   <dd>{order.shipping.transitTime}</dd>
                 </div>
               ) : null}
+              {order.shipping?.trackingNo ? (
+                <div className="od__row">
+                  <dt>Tracking</dt>
+                  <dd className="pd__code">{order.shipping.trackingNo}</dd>
+                </div>
+              ) : null}
               {order.shipping?.parcel ? (
                 <div className="od__row">
                   <dt>Parcel</dt>

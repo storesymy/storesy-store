@@ -261,6 +261,10 @@ export function toPublic(
           provider: data.shipping.provider ?? null,
           ...(data.shipping.providerLabel ? { providerLabel: data.shipping.providerLabel } : {}),
           ...(data.shipping.transitTime ? { transitTime: data.shipping.transitTime } : {}),
+          ...(data.shipping.trackingNo ? { trackingNo: data.shipping.trackingNo } : {}),
+          ...(data.shipping.awbGeneratedAt
+            ? { awbGeneratedAt: data.shipping.awbGeneratedAt }
+            : {}),
           ...(data.shipping.parcel ? { parcel: data.shipping.parcel } : {}),
         }
       : null,
@@ -343,6 +347,14 @@ export async function setFulfilment(
     data: { ...data, fulfilment, updatedAt: now },
   });
   return toPublic(row, found.pageName, found.pageSlug, found.customer, found.contact);
+}
+
+/** Paid-but-unfulfilled orders — the /fulfilment table. */
+export async function listToProcess(env: Env): Promise<Order[]> {
+  const rows = await ordersModel.listOrders(env, undefined, true);
+  return rows.map((entry) =>
+    toPublic(entry.order, entry.pageName, entry.pageSlug, entry.customer, entry.contact),
+  );
 }
 
 /**

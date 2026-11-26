@@ -16,6 +16,9 @@ import type {
   IntegrationRecord,
   IntegrationVerifyResult,
   LoginInput,
+  AwbBatch,
+  AwbGenerateInput,
+  AwbGenerateResult,
   Order,
   OrderFulfilmentStatus,
   Product,
@@ -274,6 +277,10 @@ export const api = {
   orderSummary: (): Promise<{ toProcess: number }> =>
     request<{ toProcess: number }>(routes.ordersSummary, { cache: "no-store" }),
 
+  /** Paid-but-unfulfilled orders for the /fulfilment table. */
+  ordersToProcess: (): Promise<{ orders: Order[] }> =>
+    request<{ orders: Order[] }>(routes.ordersToProcess, { cache: "no-store" }),
+
   /** The merchant's order list, newest first; `page` narrows to one page. */
   customers: (
     params: {
@@ -297,6 +304,17 @@ export const api = {
     request<CustomerDetail>(`${routes.customers}/${uuid}`),
 
   order: (uuid: string): Promise<Order> => request<Order>(`${routes.orders}/${uuid}`),
+
+  /** Book MyParcel Asia labels for the selected paid orders. */
+  generateAwb: (input: AwbGenerateInput): Promise<AwbGenerateResult> =>
+    request<AwbGenerateResult>(routes.fulfilmentAwb, {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+
+  /** Generated AWB batches, newest first. */
+  fulfilmentBatches: (): Promise<{ batches: AwbBatch[] }> =>
+    request<{ batches: AwbBatch[] }>(routes.fulfilmentBatches, { cache: "no-store" }),
 
   updateOrderFulfilment: (uuid: string, status: OrderFulfilmentStatus): Promise<Order> =>
     request<Order>(`${routes.orders}/${uuid}/fulfilment`, {

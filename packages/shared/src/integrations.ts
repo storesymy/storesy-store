@@ -112,6 +112,17 @@ export const testEmailSchema = z.object({
   message: z.string().max(10_000, "Message is too long").optional(),
 });
 
+/**
+ * A read-only row in the details modal whose value the provider returns from
+ * its own account (not typed by the merchant). MyParcel Asia fills these from
+ * the `/user` profile when the connection is saved.
+ */
+export interface IntegrationProfileField {
+  /** Key under `data.settings`. */
+  name: string;
+  label: string;
+}
+
 /** One credential the provider's setup asks for. */
 export interface IntegrationField {
   /** Stable key the value is stored under (per provider). */
@@ -154,6 +165,16 @@ export interface IntegrationProvider {
   auth?: "google-oauth";
   /** Credentials the setup dialog asks for, in order — first is `name`. */
   fields: IntegrationField[];
+  /**
+   * Account details the provider returns after verifying the credentials.
+   * Read-only in the details modal; never asked for in the connect form.
+   */
+  profileFields?: IntegrationProfileField[];
+  /**
+   * Preferences edited in the details modal only (not the connect form).
+   * Persisted as plaintext `settings`, validated like any other config field.
+   */
+  settingsFields?: IntegrationField[];
   /** Where to find those credentials — heading + steps, under the fields. */
   guide?: { title: string; steps: IntegrationGuideStep[] };
   /**
@@ -265,14 +286,26 @@ export const INTEGRATION_PROVIDERS: IntegrationProvider[] = [
         type: "select",
         options: ["app.myparcelasia.com", "demo.myparcelasia.com"],
       },
-      {
-        name: "senderPostcode",
-        label: "Sender postcode",
-        role: "config",
-        placeholder: "e.g. 60000",
-      },
       { name: "apiKey", label: "API Key", role: "secret", type: "password" },
       { name: "apiSecret", label: "API Secret", role: "secret", type: "password" },
+    ],
+    profileFields: [
+      { name: "senderName", label: "Sender name" },
+      { name: "senderPhone", label: "Sender phone" },
+      { name: "senderEmail", label: "Sender email" },
+      { name: "senderAddress", label: "Sender address" },
+      { name: "senderPostcode", label: "Sender postcode" },
+      { name: "senderState", label: "Sender state" },
+    ],
+    settingsFields: [
+      {
+        name: "defaultSendMethod",
+        label: "Default Send Method",
+        role: "config",
+        type: "select",
+        // First option is the stored default for a newly connected account.
+        options: ["Dropoff", "Pickup"],
+      },
     ],
   },
   {

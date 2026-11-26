@@ -2091,6 +2091,48 @@ button.sf-action:disabled {
   text-align: right;
 }
 
+/* Compact row action (orders list). */
+.pd__manage {
+  min-height: 30px;
+  padding: 0 10px;
+  font-size: 12.5px;
+}
+
+/* Fulfilment view tabs + the select-all/row checkbox column. */
+.fulfilment__tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.fulfilment__tabs .ui-btn {
+  min-height: 34px;
+  padding: 0 14px;
+  font-size: 13px;
+}
+
+.fulfilment__tabBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  margin-left: 8px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #14181f;
+  color: #fff;
+  font-size: 10.5px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+/* Selected-only bulk action, pushed to the far right of the tab row. */
+.fulfilment__awb {
+  margin-left: auto;
+}
+
 .pd__empty {
   display: grid;
   justify-items: center;
@@ -6661,4 +6703,121 @@ button.sf-action:disabled {
   color: var(--st-ink-soft);
   font-size: 12px;
   line-height: 1.5;
+}
+
+/* The AWB number under the courier label: one unbroken token, small enough
+   that a real carrier reference stays on one line in the column. */
+.fulfilment__tracking {
+  display: inline-block;
+  margin-top: 2px;
+  color: var(--st-ink-soft);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+
+/* ---- AWB booking dialog ---- */
+
+.pd-modal__panel.awb {
+  max-width: 480px;
+}
+
+.awb__integration {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--st-line);
+  color: var(--st-ink-soft);
+  font-size: 13px;
+}
+
+.awb__integration strong {
+  color: var(--st-ink);
+  font-size: 13.5px;
+}
+
+.awb__account {
+  color: var(--st-ink-soft);
+  font-weight: 500;
+}
+
+.awb__busy {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 0;
+}
+
+.awb__busy strong {
+  display: block;
+  font-size: 14px;
+}
+
+.awb__busy p {
+  margin: 3px 0 0;
+  color: var(--st-ink-soft);
+  font-size: 12.5px;
+}
+
+.awb__spinner {
+  display: block;
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border: 3px solid var(--st-line);
+  border-top-color: var(--st-brand);
+  border-radius: 50%;
+  animation: sco-spin 0.75s linear infinite;
+}
+
+.awb__ok,
+.awb__error {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.awb__ok {
+  color: var(--st-success);
+}
+
+.awb__error {
+  color: var(--st-danger);
+}
+
+.awb__messages {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--st-danger);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.awb__list {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--st-line);
+  border-radius: var(--st-radius);
+  background: var(--st-bg);
+}
+
+.awb__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12.5px;
+}
+
+.awb__tracking {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-weight: 600;
+  color: var(--st-ink);
+}
+
+.awb__pending {
+  color: var(--st-ink-soft);
 }
