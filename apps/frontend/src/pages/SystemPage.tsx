@@ -51,7 +51,7 @@ export function SystemPage() {
   const [loggingOut, setLoggingOut] = useState(false);
   const [theme, toggleTheme] = useTheme();
   const location = useLocation();
-  const nav = useAppNav(location.pathname, user?.role);
+  const nav = useAppNav(location.pathname, user);
   const navigate = useNavigate();
 
   const [config, setConfig] = useState<DbConfig | null>(null);

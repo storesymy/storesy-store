@@ -34,6 +34,21 @@ export async function findLatestConnectedIntegration(
   return rows.find((row) => row.data.connected) ?? null;
 }
 
+/**
+ * First connected email sender — used for account invitations. Gmail wins
+ * over Cloudflare: Cloudflare can be present for another purpose without a
+ * verified sender address, while a connected Gmail row always carries the
+ * account address it sends from.
+ */
+export async function findFirstEmailIntegration(env: Env): Promise<IntegrationRow | null> {
+  const rows = await db(env).select().from(integrations).orderBy(asc(integrations.id)).all();
+  return (
+    rows.find((row) => row.data.connected && row.provider === "gmail") ??
+    rows.find((row) => row.data.connected && row.provider === "cloudflare") ??
+    null
+  );
+}
+
 export async function findIntegrationById(env: Env, id: number): Promise<IntegrationRow | null> {
   const rows = await db(env)
     .select()

@@ -1,3 +1,4 @@
+import type { MenuKey } from "@storesy/shared";
 import { sql } from "drizzle-orm";
 import { check, index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
@@ -22,6 +23,12 @@ import { check, index, integer, sqliteTable, text, uniqueIndex } from "drizzle-o
  * Append-only schema changes: new columns are added with `drizzle-kit generate`
  * (a new migration file), never by editing an old one.
  */
+/** Non-indexed user fields. */
+export interface UserData {
+  /** Sidebar menu keys this user may open; owner ignores this list. */
+  menuAccess: MenuKey[];
+}
+
 export const users = sqliteTable(
   "users",
   {
@@ -31,10 +38,24 @@ export const users = sqliteTable(
     uuid: text("uuid").notNull(),
     email: text("email").notNull(),
     name: text("name").notNull(),
+    /** Empty for a pending invite; login refuses every non-active status. */
     passwordHash: text("password_hash").notNull(),
     role: text("role")
       .notNull()
       .default("owner"),
+    /** `active` once accepted; `invited` while the link is pending. */
+    status: text("status").notNull().default("active"),
+    /** Non-indexed user fields — see UserData. */
+    data: text("data", { mode: "json" })
+      .$type<UserData>()
+      .notNull()
+      .default(sql`'{"menuAccess":[]}'`),
+    /** SHA-256 of the invite token; the raw token is never stored. */
+    inviteTokenHash: text("invite_token_hash"),
+    /** `YYYY-MM-DD HH:MM:SS` KL — 48 hours after invite/resend. */
+    inviteExpiresAt: text("invite_expires_at"),
+    /** `users.id` of the inviter. */
+    invitedBy: integer("invited_by"),
     createdAt: text("created_at")
       .notNull()
       .default(sql`(strftime('%Y-%m-%d %H:%M:%S', 'now', '+8 hours'))`),
@@ -45,6 +66,9 @@ export const users = sqliteTable(
   (table) => [
     uniqueIndex("users_uuid_unique").on(table.uuid),
     uniqueIndex("users_email_unique").on(table.email),
+    uniqueIndex("users_invite_token_unique").on(table.inviteTokenHash),
+    index("users_status_idx").on(table.status),
+    index("users_invite_expires_idx").on(table.inviteExpiresAt),
   ],
 );
 

@@ -29,7 +29,7 @@ export function HomePage() {
   const [loggingOut, setLoggingOut] = useState(false);
   const [theme, toggleTheme] = useTheme();
   const location = useLocation();
-  const nav = useAppNav(location.pathname, user?.role);
+  const nav = useAppNav(location.pathname, user);
   const navigate = useNavigate();
 
   if (loading) {

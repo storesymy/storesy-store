@@ -48,6 +48,9 @@ export const RESERVED_SLUGS = [
   "shipping-zone",
   "customers",
   "customer", // heads /customer/:uuid
+  "users",
+  "invite-user",
+  "invite", // heads /invite/:token
   "templates",
   "salespages", // heads /salespages/:uuid
   "storefront",

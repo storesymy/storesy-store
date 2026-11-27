@@ -1,3 +1,4 @@
+import { MENU_KEYS } from "@storesy/shared";
 import type { LoginInput, SignupInput, SignupStatus, User } from "@storesy/shared";
 import { forbidden, unauthorized } from "../core/errors";
 import type { UserRow } from "../models/schema";
@@ -40,6 +41,9 @@ export function toPublicUser(row: UserRow): User {
     email: row.email,
     name: row.name,
     role: row.role,
+    status: row.status === "invited" ? "invited" : "active",
+    menuAccess: row.role === "owner" ? [...MENU_KEYS] : (row.data?.menuAccess ?? []),
+    ...(row.inviteExpiresAt ? { inviteExpiresAt: row.inviteExpiresAt } : {}),
     createdAt: row.createdAt,
   };
 }
@@ -88,6 +92,12 @@ export async function login(env: Env, input: LoginInput, clientIp: string): Prom
     // Spend the same CPU as a real verification so timing cannot enumerate emails.
     await burnVerifyTime(input.password);
     throw unauthorized("invalid_credentials", "Email or password is incorrect");
+  }
+  if (row.status !== "active") {
+    throw unauthorized(
+      "invitation_pending",
+      "This invitation has not been accepted yet. Use the link in your invitation email.",
+    );
   }
 
   const valid = await verifyPassword(input.password, row.passwordHash);

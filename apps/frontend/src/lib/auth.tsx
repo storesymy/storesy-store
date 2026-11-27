@@ -1,4 +1,4 @@
-import type { LoginInput, SignupInput, User } from "@storesy/shared";
+import type { AcceptInvitationInput, LoginInput, SignupInput, User } from "@storesy/shared";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { ApiError, api } from "./api";
@@ -9,6 +9,7 @@ interface AuthContextValue {
   loading: boolean;
   signup: (input: SignupInput) => Promise<User>;
   login: (input: LoginInput) => Promise<User>;
+  acceptInvite: (token: string, input: AcceptInvitationInput) => Promise<User>;
   logout: () => Promise<void>;
 }
 
@@ -51,14 +52,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return signedIn;
   }, []);
 
+  const acceptInvite = useCallback(
+    async (token: string, input: AcceptInvitationInput): Promise<User> => {
+      const accepted = await api.acceptInvitation(token, input);
+      setUser(accepted.user);
+      return accepted.user;
+    },
+    [],
+  );
+
   const logout = useCallback(async (): Promise<void> => {
     await api.logout();
     setUser(null);
   }, []);
 
   const value = useMemo(
-    () => ({ user, loading, signup, login, logout }),
-    [user, loading, signup, login, logout],
+    () => ({ user, loading, signup, login, acceptInvite, logout }),
+    [user, loading, signup, login, acceptInvite, logout],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

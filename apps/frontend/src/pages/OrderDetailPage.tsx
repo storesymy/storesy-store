@@ -57,7 +57,7 @@ export function OrderDetailPage() {
   const [loggingOut, setLoggingOut] = useState(false);
   const [theme, toggleTheme] = useTheme();
   const location = useLocation();
-  const nav = useAppNav(location.pathname, user?.role);
+  const nav = useAppNav(location.pathname, user);
   const { refresh: refreshOrdersBadge } = useOrdersToProcess();
   const navigate = useNavigate();
   const { uuid } = useParams();

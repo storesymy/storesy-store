@@ -1,4 +1,5 @@
 import type { EmailTemplatePlaceholder } from "./emailTemplates";
+import type { MenuKey } from "./menu";
 import type { SalesPageHtmlSlot, SalesPageStatus } from "./schemas";
 import type {
   ShippingCourierKey,
@@ -13,10 +14,41 @@ export interface User {
   id: string;
   email: string;
   name: string;
-  /** Account role: `owner` for the first self-signup; `owner`/`admin`/… after. */
+  /** Account role: `owner` for the first self-signup; `owner`/`admin`/`staff`. */
   role: string;
+  /** `invited` until the invite is accepted and a password is set. */
+  status: "active" | "invited";
+  /** Sidebar menu keys this user may open (owner always has everything). */
+  menuAccess: MenuKey[];
+  /** Pending invite expiry, `YYYY-MM-DD HH:MM:SS` KL. */
+  inviteExpiresAt?: string | null;
   /** Account created at, `YYYY-MM-DD HH:MM:SS` in Asia/Kuala_Lumpur. */
   createdAt: string;
+}
+
+/** One row in the /users table. */
+export interface UserListRow extends User {
+  /** Human number derived from the row id, e.g. `#0001`. */
+  userNo: string;
+  /** `Active`, `Invited` or `Expired` (derived from the invite expiry). */
+  statusLabel: string;
+}
+
+export interface UserPage {
+  users: UserListRow[];
+  total: number;
+  page: number;
+  perPage: number;
+}
+
+/** Public invite details the acceptance page shows before setting a password. */
+export interface InvitationDetails {
+  name: string;
+  email: string;
+  role: "admin" | "staff";
+  menuAccess: MenuKey[];
+  /** `YYYY-MM-DD HH:MM:SS` KL. */
+  expiresAt: string;
 }
 
 /**
@@ -242,6 +274,11 @@ export interface OrderCustomer {
  * capabilities keep using the order's UUID.
  */
 export function formatOrderNo(rowId: number): string {
+  return `#${String(rowId).padStart(4, "0")}`;
+}
+
+/** A user's human reference — same shape as an order's: `#0001`. */
+export function formatUserNo(rowId: number): string {
   return `#${String(rowId).padStart(4, "0")}`;
 }
 
@@ -604,6 +641,8 @@ export const routes = {
   fulfilmentAwb: `${API_BASE}/fulfilment/awb`,
   fulfilmentBatches: `${API_BASE}/fulfilment/batches`,
   customers: `${API_BASE}/customers`,
+  users: `${API_BASE}/users`,
+  invitations: `${API_BASE}/invitations`,
   templates: `${API_BASE}/templates`,
   integrations: `${API_BASE}/integrations`,
   gmailOauthStart: `${API_BASE}/integrations/gmail/oauth/start`,

@@ -13,7 +13,19 @@ import * as payments from "./controllers/payments.controller";
 import * as products from "./controllers/products.controller";
 import * as salespages from "./controllers/salespages.controller";
 import * as shippingZones from "./controllers/shippingZones.controller";
+import * as users from "./controllers/users.controller";
+import type { MenuKey } from "@storesy/shared";
+import type { Handler } from "./core/router";
 import { Router } from "./core/router";
+import * as permissions from "./services/permissions.service";
+
+/** Gate a route by the sidebar menu it backs (owner bypasses). */
+function menu(key: MenuKey, handler: Handler): Handler {
+  return async (ctx) => {
+    await permissions.requireMenu(ctx, key);
+    return handler(ctx);
+  };
+}
 
 export function buildRouter(): Router {
   return new Router()
@@ -23,27 +35,37 @@ export function buildRouter(): Router {
     .post("/api/auth/login", auth.login)
     .post("/api/auth/logout", auth.logout)
     .get("/api/me", auth.me)
+    // Invitations: the invitee's public confirmation/acceptance, plus the
+    // admin-only creation path.
+    .get("/api/invitations/:token", users.invitation)
+    .post("/api/invitations/:token/accept", users.accept)
+    .post("/api/invitations", users.invite)
+    // User management (admin/owner only; the service keeps owner protected).
+    .get("/api/users", users.list)
+    .patch("/api/users/:uuid", users.update)
+    .post("/api/users/:uuid/resend-invite", users.resend)
+    .delete("/api/users/:uuid", users.revoke)
     // Products — any signed-in account (401 without a session, never owner-only).
-    .get("/api/products", products.list)
-    .get("/api/products/:uuid", products.detail)
-    .post("/api/products", products.create)
-    .patch("/api/products/:uuid", products.update)
+    .get("/api/products", menu("products", products.list))
+    .get("/api/products/:uuid", menu("products", products.detail))
+    .post("/api/products", menu("products", products.create))
+    .patch("/api/products/:uuid", menu("products", products.update))
     // Shipping Zone — delivery rates. Session-gated like products; no
     // credentials live here, so every signed-in role may manage them.
-    .get("/api/shipping-zones", shippingZones.list)
-    .get("/api/shipping-zones/:uuid", shippingZones.detail)
-    .post("/api/shipping-zones", shippingZones.create)
-    .patch("/api/shipping-zones/:uuid", shippingZones.update)
-    .delete("/api/shipping-zones/:uuid", shippingZones.remove)
+    .get("/api/shipping-zones", menu("shipping-zone", shippingZones.list))
+    .get("/api/shipping-zones/:uuid", menu("shipping-zone", shippingZones.detail))
+    .post("/api/shipping-zones", menu("shipping-zone", shippingZones.create))
+    .patch("/api/shipping-zones/:uuid", menu("shipping-zone", shippingZones.update))
+    .delete("/api/shipping-zones/:uuid", menu("shipping-zone", shippingZones.remove))
     // Sales pages — any signed-in account, like products. Documents live in
     // R2; the row records their paths. The public read is the signed-out
     // storefront view (`/<slug>`), and it counts views via the counter DO.
-    .get("/api/salespages", salespages.list)
+    .get("/api/salespages", menu("salespages", salespages.list))
     .get("/api/salespages/public/:slug", salespages.publicRead)
-    .get("/api/salespages/:uuid", salespages.detail)
-    .post("/api/salespages", salespages.create)
-    .patch("/api/salespages/:uuid", salespages.update)
-    .delete("/api/salespages/:uuid", salespages.remove)
+    .get("/api/salespages/:uuid", menu("salespages", salespages.detail))
+    .post("/api/salespages", menu("salespages", salespages.create))
+    .patch("/api/salespages/:uuid", menu("salespages", salespages.update))
+    .delete("/api/salespages/:uuid", menu("salespages", salespages.remove))
     // The checkout's rate card — signed out, like the page that reads it.
     // Keys and amounts only; no merchant labels or account data.
     .get("/api/public/shipping-rates", shippingZones.publicRates)
@@ -63,50 +85,53 @@ export function buildRouter(): Router {
     // capability, and the service requires a paid order that contains the
     // product. Digital goods never become publicly browsable.
     .get("/api/public/downloads/:order/:product/:index", downloads.serve)
-    .get("/api/orders", orders.list)
+    .get("/api/orders", menu("orders", orders.list))
     // The sidebar badge: paid orders still to fulfil (cheap count, no joins).
+    // Deliberately session-only so every Shell can render the badge.
     .get("/api/orders/summary", orders.summary)
     // The /fulfilment table: the same filter with the full list shape.
-    .get("/api/orders/to-process", orders.toProcess)
+    .get("/api/orders/to-process", menu("fulfilment", orders.toProcess))
     // AWB booking for the selected fulfilled queue (real MyParcel Asia labels).
-    .post("/api/fulfilment/awb", orders.generateAwb)
+    .post("/api/fulfilment/awb", menu("fulfilment", orders.generateAwb))
     // The batches created by successful AWB runs.
-    .get("/api/fulfilment/batches", orders.listBatches)
+    .get("/api/fulfilment/batches", menu("fulfilment", orders.listBatches))
     // One combined MyParcel Asia consignment-note PDF for the batch.
-    .get("/api/fulfilment/batches/:uuid/print_label", orders.printBatchLabel)
+    .get(
+      "/api/fulfilment/batches/:uuid/print_label",
+      menu("fulfilment", orders.printBatchLabel),
+    )
     // One order's detail, and the merchant's fulfilment action.
-    .get("/api/orders/:uuid", orders.detail)
-    .patch("/api/orders/:uuid/fulfilment", orders.fulfilment)
+    .get("/api/orders/:uuid", menu("orders", orders.detail))
+    .patch("/api/orders/:uuid/fulfilment", menu("orders", orders.fulfilment))
     // Customers — the merchant's list (search + 30/page). Session-gated.
-    .get("/api/customers", customers.list)
-    .get("/api/customers/:uuid", customers.detail)
-    // Email templates — the automated messages the store sends. Any signed-in
-    // account may read and edit the wording (no credentials live here).
-    .get("/api/templates", emailTemplates.list)
-    .patch("/api/templates/:uuid", emailTemplates.update)
+    .get("/api/customers", menu("customers", customers.list))
+    .get("/api/customers/:uuid", menu("customers", customers.detail))
+    // Email templates — the automated messages the store sends.
+    .get("/api/templates", menu("templates", emailTemplates.list))
+    .patch("/api/templates/:uuid", menu("templates", emailTemplates.update))
     // The checkout's admin test controls (Success / Failed / Cancel) — the
     // only order write that isn't the buyer's own submit, and admin-gated.
     .post("/api/orders/:uuid/test", payments.simulate)
     // Integrations — the first ADMIN-ONLY surface: credentials for payment
     // and email providers (401 without a session, 403 outside ADMIN_ROLES),
     // and every read carries masked hints only, never a secret.
-    .get("/api/integrations", integrations.list)
-    .post("/api/integrations", integrations.create)
+    .get("/api/integrations", menu("integrations", integrations.list))
+    .post("/api/integrations", menu("integrations", integrations.create))
     // Gmail OAuth handshake. The callback is a browser navigation (Google →
     // us), so it answers with an HTML redirect page instead of JSON; the
     // pending pointer lives in an HttpOnly cookie, never in a URL.
-    .post("/api/integrations/gmail/oauth/start", integrations.gmailStart)
+    .post("/api/integrations/gmail/oauth/start", menu("integrations", integrations.gmailStart))
     .get("/api/integrations/gmail/oauth/callback", integrations.gmailCallback)
-    .get("/api/integrations/gmail/oauth/pending", integrations.gmailPending)
-    .post("/api/integrations/gmail/oauth/complete", integrations.gmailComplete)
-    .delete("/api/integrations/gmail/oauth/pending", integrations.gmailDiscard)
-    .patch("/api/integrations/:uuid", integrations.update)
-    .delete("/api/integrations/:uuid", integrations.remove)
+    .get("/api/integrations/gmail/oauth/pending", menu("integrations", integrations.gmailPending))
+    .post("/api/integrations/gmail/oauth/complete", menu("integrations", integrations.gmailComplete))
+    .delete("/api/integrations/gmail/oauth/pending", menu("integrations", integrations.gmailDiscard))
+    .patch("/api/integrations/:uuid", menu("integrations", integrations.update))
+    .delete("/api/integrations/:uuid", menu("integrations", integrations.remove))
     // Setup check for MyParcel Asia (admin-only): decrypts the stored key and
     // asks for one sample quote — no secret ever leaves the server.
-    .post("/api/integrations/:uuid/verify", integrations.verify)
+    .post("/api/integrations/:uuid/verify", menu("integrations", integrations.verify))
     // Test Email — admin-only; sends to the SESSION user (Cloudflare only).
-    .post("/api/integrations/:uuid/test-email", integrations.testEmail)
+    .post("/api/integrations/:uuid/test-email", menu("integrations", integrations.testEmail))
     // Images — upload is a session-gated write; reads are public (the
     // storefront views product pictures signed out).
     .post("/api/images", images.upload)

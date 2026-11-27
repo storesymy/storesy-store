@@ -255,6 +255,15 @@ The count refreshes on navigation, after a fulfilment change, when the tab
 becomes visible, and on a 60-second poll. Imported/complete documents ship
 untouched — no checkout is injected into them.
 
+**User management.** Owner/admin accounts open **User** in the sidebar
+(`/users`): search, 30 per page, Group/Status/Manage. **Invite User** creates a
+pending account with a group (Admin or Staff) and per-menu sidebar access, then
+emails a 48-hour link through the first connected Gmail/Cloudflare Email
+integration. The invitee reviews their access at `/invite/:token`, sets a
+password and is signed in immediately. Menu access is enforced by the API and
+the SPA route guard, not just hidden in the sidebar; Owner always has every
+menu, and only the Owner can invite or manage another Admin.
+
 ## Repo policies
 
 **Tests — uptime and money only.**

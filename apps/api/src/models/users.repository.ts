@@ -1,5 +1,5 @@
-import { ADMIN_ROLES } from "@storesy/shared";
-import { asc, eq, inArray } from "drizzle-orm";
+import { ADMIN_ROLES, MENU_KEYS } from "@storesy/shared";
+import { asc, desc, eq, inArray, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import type { NewUserRow, UserRow } from "./schema";
 import { users } from "./schema";
@@ -29,6 +29,70 @@ export async function findUserByEmail(env: Env, email: string): Promise<UserRow 
 export async function findUserById(env: Env, id: string): Promise<UserRow | null> {
   const rows = await db(env).select().from(users).where(eq(users.uuid, id)).limit(1).all();
   return rows[0] ?? null;
+}
+
+/** Case-insensitive name/email search, newest first, for /users. */
+export async function listUsersPage(
+  env: Env,
+  params: { search?: string; page: number; perPage: number },
+): Promise<UserRow[]> {
+  const term = (params.search ?? "").trim().toLowerCase();
+  const where = term
+    ? or(
+        sql`lower(${users.name}) like ${`%${term}%`}`,
+        sql`lower(${users.email}) like ${`%${term}%`}`,
+      )
+    : undefined;
+  const base = db(env).select().from(users);
+  return (where ? base.where(where) : base)
+    .orderBy(desc(users.id))
+    .limit(params.perPage)
+    .offset((params.page - 1) * params.perPage)
+    .all();
+}
+
+export async function countUsersMatching(env: Env, search?: string): Promise<number> {
+  const term = (search ?? "").trim().toLowerCase();
+  const where = term
+    ? or(
+        sql`lower(${users.name}) like ${`%${term}%`}`,
+        sql`lower(${users.email}) like ${`%${term}%`}`,
+      )
+    : undefined;
+  const base = db(env).select({ count: sql<number>`count(*)` }).from(users);
+  const rows = await (where ? base.where(where) : base).all();
+  return rows[0]?.count ?? 0;
+}
+
+export async function findUserByInviteTokenHash(
+  env: Env,
+  tokenHash: string,
+): Promise<UserRow | null> {
+  const rows = await db(env)
+    .select()
+    .from(users)
+    .where(eq(users.inviteTokenHash, tokenHash))
+    .limit(1)
+    .all();
+  return rows[0] ?? null;
+}
+
+export async function updateUser(
+  env: Env,
+  id: number,
+  values: Partial<NewUserRow>,
+): Promise<UserRow | null> {
+  const updated = await db(env).update(users).set(values).where(eq(users.id, id)).returning().all();
+  return updated[0] ?? null;
+}
+
+export async function deleteUser(env: Env, id: number): Promise<boolean> {
+  const removed = await db(env)
+    .delete(users)
+    .where(eq(users.id, id))
+    .returning({ id: users.id })
+    .all();
+  return removed.length > 0;
 }
 
 /**
@@ -79,11 +143,17 @@ export async function countUsers(env: Env): Promise<number> {
  */
 export async function insertFirstUser(env: Env, row: NewUserRow): Promise<UserRow | null> {
   const result = await env.DB.prepare(
-    `INSERT INTO users (uuid, email, name, password_hash, role)
-     SELECT ?1, ?2, ?3, ?4, 'owner'
+    `INSERT INTO users (uuid, email, name, password_hash, role, status, data)
+     SELECT ?1, ?2, ?3, ?4, 'owner', 'active', ?5
      WHERE NOT EXISTS (SELECT 1 FROM users)`,
   )
-    .bind(row.uuid, row.email, row.name, row.passwordHash)
+    .bind(
+      row.uuid,
+      row.email,
+      row.name,
+      row.passwordHash,
+      JSON.stringify({ menuAccess: [...MENU_KEYS] }),
+    )
     .run();
   if ((result.meta.changes ?? 0) !== 1) return null;
   return findUserByEmail(env, row.email);

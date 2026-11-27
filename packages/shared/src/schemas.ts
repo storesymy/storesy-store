@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { countryByCode } from "./countries";
 import { unknownTemplatePlaceholders } from "./emailTemplates";
+import { MENU_KEYS } from "./menu";
 import { isReservedSlug } from "./routing";
 import {
   SHIPPING_PRICE_TYPES,
@@ -39,6 +40,41 @@ export const loginSchema = z.object({
   email: emailSchema,
   password: z.string().min(1, "Password is required").max(128),
 });
+
+/** POST /api/invitations — admin creates a pending user and sends the link. */
+export const inviteUserSchema = z.object({
+  name: z
+    .string()
+    .trim()
+    .min(2, "Name must be at least 2 characters")
+    .max(80, "Name must be at most 80 characters"),
+  email: emailSchema,
+  role: z.enum(["admin", "staff"]),
+  menuAccess: z.array(z.enum(MENU_KEYS)).default([]),
+});
+
+export type InviteUserInput = z.infer<typeof inviteUserSchema>;
+
+/** POST /api/invitations/:token/accept — the invitee sets their password. */
+export const acceptInvitationSchema = z
+  .object({
+    password: passwordSchema,
+    confirmPassword: z.string().min(1, "Confirm your password"),
+  })
+  .refine((value) => value.password === value.confirmPassword, {
+    path: ["confirmPassword"],
+    message: "Passwords do not match",
+  });
+
+export type AcceptInvitationInput = z.infer<typeof acceptInvitationSchema>;
+
+/** PATCH /api/users/:uuid — group / menu access for an existing user. */
+export const updateUserSchema = z.object({
+  role: z.enum(["admin", "staff"]).optional(),
+  menuAccess: z.array(z.enum(MENU_KEYS)).optional(),
+});
+
+export type UpdateUserInput = z.infer<typeof updateUserSchema>;
 
 /** Product creation: name + type only; price/stock start at 0. */
 export const createProductSchema = z.object({

@@ -1,82 +1,73 @@
-import { isAdminRole } from "@storesy/shared";
+import { isAdminRole, MENU_ITEMS, MENU_KEYS } from "@storesy/shared";
+import type { MenuKey } from "@storesy/shared";
 import type { NavItem } from "@storesy/ui";
 import { useOrdersToProcess } from "./ordersBadge";
 
-/**
- * Single source for the sidebar menu, shared by every page in the shell.
- * Active state follows the current pathname so the highlight always matches the URL.
- *
- * `role` gates admin-only entries: Integrations vanishes for anyone the API
- * would answer `403` — defence in depth over the page's own redirect (the
- * API stays the hard boundary). Unknown/omitted role keeps the item: the
- * guard that matters is server-side.
- */
-export function buildNav(
-  pathname: string,
-  role?: string,
-  ordersToProcess = 0,
-): NavItem[] {
-  const items: NavItem[] = [
-    { label: "Dashboard", icon: "dashboard", href: "/home", active: pathname === "/home" },
-    { label: "Store Front", icon: "stores", href: "/storefront", active: pathname === "/storefront" },
-    {
-      label: "Sales Page",
-      icon: "sales",
-      href: "/salespages",
-      active: pathname === "/salespages" || pathname.startsWith("/salespages/"),
-    },
-    { label: "Products", icon: "products", href: "/products", active: pathname === "/products" },
-    {
-      label: "All Orders",
-      icon: "orders",
-      href: "/orders",
-      active: pathname === "/orders" || pathname.startsWith("/order/"),
-    },
-    {
-      label: "Order to Process",
-      icon: "orders",
-      href: "/fulfilment",
-      active: pathname === "/fulfilment",
-      count: ordersToProcess,
-    },
-    {
-      label: "Shipping Zone",
-      icon: "truck",
-      href: "/shipping-zone",
-      active: pathname === "/shipping-zone",
-    },
-    {
-      label: "Customers",
-      icon: "customers",
-      href: "/customers",
-      active: pathname === "/customers" || pathname.startsWith("/customer/"),
-    },
-    {
-      label: "Email Templates",
-      icon: "email",
-      href: "/templates",
-      active: pathname === "/templates",
-    },
-  ];
+type NavUser = { role?: string; menuAccess?: MenuKey[] };
 
-  if (role !== undefined && !isAdminRole(role)) return items;
+const ICONS: Record<MenuKey, NavItem["icon"]> = {
+  dashboard: "dashboard",
+  storefront: "stores",
+  salespages: "sales",
+  products: "products",
+  orders: "orders",
+  fulfilment: "orders",
+  "shipping-zone": "truck",
+  customers: "customers",
+  templates: "email",
+  integrations: "integrations",
+  users: "customers",
+};
 
-  items.push({
-    label: "Integrations",
-    icon: "integrations",
-    href: "/integrations",
-    active: pathname === "/integrations",
-  });
-  return items;
+function isActive(key: MenuKey, pathname: string): boolean {
+  switch (key) {
+    case "salespages":
+      return pathname === "/salespages" || pathname.startsWith("/salespages/");
+    case "orders":
+      return pathname === "/orders" || pathname.startsWith("/order/");
+    case "customers":
+      return pathname === "/customers" || pathname.startsWith("/customer/");
+    case "users":
+      return pathname === "/users";
+    default: {
+      const href = MENU_ITEMS.find((item) => item.key === key)?.href ?? "";
+      return pathname === href;
+    }
+  }
 }
 
 /**
- * `buildNav` plus the live orders badge. Called once per page, before any
- * conditional return, so the count updates wherever the merchant is.
+ * Sidebar items for this account: the shared catalogue filtered by role
+ * (admin-only entries) and the user's saved menu access. Owner sees all.
  */
-export function useAppNav(pathname: string, role?: string): NavItem[] {
+export function buildNav(
+  pathname: string,
+  user?: NavUser | null,
+  ordersToProcess = 0,
+): NavItem[] {
+  const role = user?.role;
+  const access = new Set<MenuKey>(
+    role === "owner" || role === undefined
+      ? [...MENU_KEYS]
+      : (user?.menuAccess ?? []),
+  );
+
+  return MENU_ITEMS.filter((item) => {
+    if (item.adminOnly && role !== undefined && !isAdminRole(role)) return false;
+    return access.has(item.key);
+  }).map((item) => ({
+    label: item.label,
+    icon: ICONS[item.key],
+    href: item.href,
+    active: isActive(item.key, pathname),
+    ...(item.key === "fulfilment" ? { count: ordersToProcess } : {}),
+  }));
+}
+
+/** `buildNav` plus the live orders badge. */
+export function useAppNav(pathname: string, user?: NavUser | null): NavItem[] {
   const { count } = useOrdersToProcess();
-  return buildNav(pathname, role, count);
+  return buildNav(pathname, user, count);
 }
 
 /**

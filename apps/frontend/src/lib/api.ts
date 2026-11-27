@@ -15,7 +15,10 @@ import type {
   GmailOAuthStart,
   IntegrationRecord,
   IntegrationVerifyResult,
+  InvitationDetails,
+  InviteUserInput,
   LoginInput,
+  AcceptInvitationInput,
   AwbBatch,
   AwbGenerateInput,
   AwbGenerateResult,
@@ -35,7 +38,9 @@ import type {
   UpdateIntegrationInput,
   UpdateProductInput,
   UpdateSalesPageInput,
+  UpdateUserInput,
   User,
+  UserPage,
 } from "@storesy/shared";
 import { routes } from "@storesy/shared";
 
@@ -92,6 +97,46 @@ export const api = {
   logout: (): Promise<void> => request<void>(routes.logout, { method: "POST" }),
 
   me: (): Promise<{ user: User }> => request<{ user: User }>(routes.me),
+
+  /* ------------------------------ /users --------------------------------- */
+
+  users: (params: { q?: string; page?: number; perPage?: number } = {}): Promise<UserPage> => {
+    const search = new URLSearchParams();
+    if (params.q) search.set("q", params.q);
+    if (params.page) search.set("page", String(params.page));
+    if (params.perPage) search.set("perPage", String(params.perPage));
+    const query = search.toString();
+    return request<UserPage>(`${routes.users}${query ? `?${query}` : ""}`);
+  },
+
+  inviteUser: (input: InviteUserInput): Promise<{ user: User }> =>
+    request<{ user: User }>(routes.invitations, {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+
+  invitation: (token: string): Promise<InvitationDetails> =>
+    request<InvitationDetails>(`${routes.invitations}/${encodeURIComponent(token)}`),
+
+  acceptInvitation: (token: string, input: AcceptInvitationInput): Promise<{ user: User }> =>
+    request<{ user: User }>(`${routes.invitations}/${encodeURIComponent(token)}/accept`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+
+  updateUser: (uuid: string, input: UpdateUserInput): Promise<{ user: User }> =>
+    request<{ user: User }>(`${routes.users}/${encodeURIComponent(uuid)}`, {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    }),
+
+  resendInvite: (uuid: string): Promise<void> =>
+    request<void>(`${routes.users}/${encodeURIComponent(uuid)}/resend-invite`, {
+      method: "POST",
+    }),
+
+  revokeInvite: (uuid: string): Promise<void> =>
+    request<void>(`${routes.users}/${encodeURIComponent(uuid)}`, { method: "DELETE" }),
 
   /* --------------------------- /integrations ------------------------------ */
   // Admin-only at the API; reads carry masked hints, never a secret.
